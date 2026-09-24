@@ -1,0 +1,344 @@
+# Wochenplan & Einkauf
+
+Aus einer Liste bekannter Gerichte einen Wochenplan bauen, der zu Bürotagen, Zeitbudget
+und Abwechslung passt – und daraus die Einkaufsliste nach Bring! pushen.
+
+Fachliche Grundlage: [`general_plan.md`](general_plan.md) (Features, Domänenlogik,
+Recherche) und [`ARCHITECTURE.md`](ARCHITECTURE.md) (Bauplan).
+
+---
+
+## Was fertig ist
+
+| Meilenstein | Inhalt | Stand |
+|---|---|---|
+| **A** Skelett & Daten rein | SQLite + Alembic, Artikel- und Gerichte-CRUD, Zeilen-Parser, Bring!-Katalog-Cache, Einheiten-Logik | ✅ |
+| **B** Planungskern | `eligibility`, `scoring`, `leftovers`, `planner`, `diagnostics`, Gewichte in `setting`, CLI | ✅ |
+| **C** Wochen-UI | Rasterseite, Board mit Drag & Drop, Kandidaten-Sheet mit Begründung, Pins, Neu-würfeln, Warnungen, „wie letzte Woche“ | ✅ |
+| **D** Liste & Bring! | Aggregation, Grundvorrat-Filter, Abhaken, Diff-Push, Textexport, Sync-Historie, PWA | ✅ |
+| **E** Angebote | Schema, Ports, Korbunio-Adapter, Matching, Angebots-Bonus im Score | 🟡 vorbereitet, Quelle nicht angeschlossen |
+
+Phase 2 (Angebote) ist laut Plan **absichtlich** noch nicht scharf: erst drei Wochen
+Alltag mit Phase 1, dann Korbunio dazuschalten. Das Schema, das Matching und der
+Score-Bonus existieren und sind getestet – es fehlt nur die konfigurierte Quelle.
+
+---
+
+## Schnellstart (Entwicklung)
+
+**Voraussetzungen:** Python 3.13 (`uv` holt es selbst), Node 22.
+
+```bash
+cd backend && uv venv --python 3.13 && uv pip install -e ".[dev]"
+```
+
+```bash
+cd frontend && npm install
+```
+
+Datenbank anlegen und Beispieldaten laden:
+
+```bash
+cd backend && MEALPLAN_DATA_DIR=../data uv run alembic upgrade head && uv run mealplan seed-demo
+```
+
+Backend und Frontend getrennt starten (Vite proxyt `/api` auf 8080):
+
+```bash
+cd backend && MEALPLAN_DATA_DIR=../data uv run uvicorn mealplan.main:app --reload --port 8080
+```
+
+```bash
+cd frontend && npm run dev
+```
+
+Dann [http://localhost:5173](http://localhost:5173). Ein API-Überblick liegt unter
+`http://localhost:8080/docs`.
+
+> **Hinweis zu Node:** Auf diesem Rechner liegt Node 22 unter `~/.local/node-v22`. Für
+> die npm-Befehle einmal pro Shell:
+> ```bash
+> export PATH="$HOME/.local/node-v22/bin:$PATH"
+> ```
+
+### Ein Deployable bauen
+
+Das Backend serviert das gebaute Frontend als SPA (mit Fallback für tiefe Routen):
+
+```bash
+cd frontend && npm run build && rm -rf ../backend/src/mealplan/static && cp -r dist ../backend/src/mealplan/static
+```
+
+---
+
+## Betrieb auf dem Heimserver
+
+```bash
+cp .env.example .env    # Bring!-Bot-Konto eintragen, siehe unten
+docker compose up -d --build
+curl http://127.0.0.1:8080/api/health
+```
+
+Erwartet: `{"db":"ok","dishes":…,"sync_adapter":…,"last_bring_push":…}`.
+
+Die Migrationen laufen im Entrypoint, der Bring!-Katalog wird beim ersten Start
+gecacht. Alle Daten liegen in `./data` (SQLite, `catalog/`, `media/`, `backups/`).
+
+### Kein Login – und was daraus folgt
+
+Die App ist im Heimnetz **ohne Anmeldung** erreichbar. Das ist eine bewusste
+Entscheidung (ARCHITECTURE.md §0): kein Login im Alltag, kein Tailscale-Client auf
+jedem Gerät. Der Preis: jedes Gerät im LAN kann lesen *und* schreiben, IoT-Geräte
+eingeschlossen.
+
+Daraus folgt genau eine Regel:
+
+> **Im Router kein Port-Forward auf 8080. Und niemals einen öffentlich erreichbaren
+> Reverse-Proxy davorsetzen, ohne vorher Auth nachzurüsten.**
+
+Von außen ist Tailscale der Weg.
+
+### PWA auf dem Homescreen
+
+Über `http://<lan-ip>:8080` registriert kein Service-Worker (kein secure context) – dort
+läuft die App als normaler Browser-Tab. Für die Installation auf dem Handy:
+
+```bash
+tailscale cert --cert-file data/certs/host.crt --key-file data/certs/host.key \
+  <host>.<tailnet>.ts.net
+# MEALPLAN_TAILNET_HOST in .env setzen
+docker compose --profile tailnet up -d
+```
+
+Empfohlene Aufteilung: Laptop über die LAN-IP, die beiden Handys einmalig über den
+HTTPS-Tailnet-Hostnamen installieren – der funktioniert zu Hause und unterwegs gleich.
+
+### Backups
+
+Die Gerichteliste ist die Handarbeit von zwei Abenden. In die Crontab des Hosts:
+
+```bash
+0 3 * * * cd /pfad/zu/shopping_app && docker compose exec -T app /app/docker/backup.sh
+```
+
+Sieben Generationen in `data/backups/`, per `sqlite3 .backup` (konsistent auch bei
+laufenden Schreibvorgängen).
+
+---
+
+## Bring! anbinden
+
+Es gibt keine offizielle Bring!-API. Der Adapter nutzt `bring-api` und ist so gebaut,
+dass ein Bruch nur den Push lähmt, nicht die App (general_plan.md §6):
+
+1. **Eigenes Bot-Konto** anlegen, z. B. `name+app@example.com`, und es zur gemeinsamen
+   Bring!-Liste einladen. So trifft ein Sperr-Risiko nur den Bot, Push-Nachrichten an
+   euch funktionieren, und die privaten Passwörter bleiben aus der App heraus.
+2. In `.env`:
+   ```
+   MEALPLAN_BRING_SYNC=bring
+   MEALPLAN_BRING_EMAIL=name+app@example.com
+   MEALPLAN_BRING_PASSWORD=…
+   ```
+3. Ohne diese Werte läuft alles normal weiter – nur der Push wird zum **Text-Export**
+   zum Kopieren und Teilen. Die Oberfläche sagt das („Bring! nicht verbunden“).
+
+**Was der Push garantiert:** Er ist ein Diff gegen die eigenen Einträge (create /
+update / remove, gemerkt in `bring_sync_item`). Fremdeinträge werden nie angefasst, und
+zweimal Senden erzeugt keine Duplikate – abgesichert in `tests/contract/test_bring_sync.py`.
+
+**Icons in Bring!** erscheinen nur bei exaktem Katalognamen. Darum hat jeder Artikel ein
+Feld „Bring!-Katalogname“ mit Fuzzy-Vorschlag aus dem gecachten Katalog (~360 Einträge).
+
+---
+
+## Die Kommandozeile
+
+Der Planungskern läuft ohne UI – so wurden die Gewichte kalibriert (Spike 4):
+
+```bash
+cd backend
+uv run mealplan plan --week 2026-W37            # Vorschlag rechnen und begründen
+uv run mealplan plan --week 2026-W37 --apply    # und speichern
+uv run mealplan show --week 2026-W37            # gespeicherten Plan zeigen
+uv run mealplan list --week 2026-W37            # Einkaufsliste als Text
+uv run mealplan weights                          # Gewichte zeigen
+uv run mealplan weights --set rotation_cap=15    # kalibrieren, ohne Deploy
+uv run mealplan push --week 2026-W37             # nach Bring! (oder Text-Fallback)
+uv run mealplan catalog-refresh                  # Bring!-Katalog neu cachen
+uv run mealplan seed-demo                        # Beispieldaten
+```
+
+`plan` gibt pro Slot die Begründung aus – dieselben Score-Beiträge, die die UI zeigt:
+
+```
+Mo Abend   2+1 P,  viel Zeit  ->  Hähnchen-Curry (3 P) [+16.0]
+                · seit 8 Wochen nicht gekocht
+                · 3 Portionen passen genau
+                · gleiche Beilage wie Do Mittag (Reis)
+```
+
+---
+
+## Zutaten sind Artikel – mit genau einem Namen
+
+Eine Zutatenzeile eines Gerichts zeigt immer auf einen Artikel aus dem Korpus, und ein
+Artikel hat **genau einen Namen**. Es gibt keine Zweitnamen und keine Synonym-Pflege für
+Zutaten: was auf der Einkaufsliste steht, heißt so, wie es im Korpus heißt.
+
+Damit daraus nicht „Reis“, „Basmatireis“ und „Vollkornreis“ werden, wird beim Erfassen
+**gesucht, bevor etwas entsteht**:
+
+- Das Zutatenfeld im Gerichts-Formular ist eine Suche. Tippen zeigt passende Zutaten
+  darunter, Auswahl per Klick oder `↑`/`↓` + `Enter`.
+- Erst wenn nichts passt, erscheint „*X* als neue Zutat anlegen“ – mit Einheit daneben.
+- Der Textblock für mehrere Zeilen (Phase 0) macht dasselbe: sichere Treffer landen
+  direkt in der Liste, und wo der Name neu ist, aber etwas Ähnliches existiert
+  („Basmatireis“ bei vorhandenem „Reis“), wird das Vorhandene angeboten, statt
+  stillschweigend einen zweiten Artikel anzulegen.
+
+Sind trotzdem Dubletten entstanden, räumt die Artikel-Seite auf: Zeilen ankreuzen,
+Namen wählen, **Zusammenführen**. Alle Zutatenzeilen, Listeneinträge und
+Angebots-Zuordnungen wandern mit; die anderen Namen verschwinden. Verschiedene
+Einheiten-Dimensionen (2 Stück vs. 150 g) werden abgelehnt statt geraten.
+
+> Das Feld **Angebots-Aliase** auf der Artikel-Seite ist etwas anderes und gehört zu
+> Phase 2: Angebote heißen im Prospekt „Gut & Günstig Schafskäse“, der Artikel heißt
+> „Hirtenkäse“. Diese Aliase werden ausschließlich für den Angebotsabgleich benutzt –
+> die Zutaten-Suche kennt sie nicht.
+
+## Nährwerte
+
+Optional und bewusst nur im **Gerichte-Tab** – der Wochenplan und die Einkaufsliste
+bleiben davon frei (ein Test hält diese Grenze fest).
+
+Jede Zutat kann vier Angaben tragen: Energie, Eiweiß, Kohlenhydrate, Fett. Die
+Bezugsgröße steckt schon in der Einheit und braucht kein eigenes Feld – **je 100 g**,
+**je 100 ml** oder **je Stück**. Damit trägt eine Zucchini ihre Werte je Stück, und das
+im Schema vorgesehene `piece_weight_g` bleibt weiterhin ungenutzt.
+
+Am Gericht erscheinen die Werte **je Portion**, im Formular live beim Tippen (gerechnet
+wird auf dem Server, damit die Logik nicht doppelt existiert). In der Gerichte-Liste
+steht eine Spalte `je Portion` mit kcal und Eiweiß.
+
+**Lücken werden benannt, nicht verschwiegen.** Fehlt bei einer Zutat die Angabe oder
+steht sie ohne Menge im Rezept („Olivenöl nach Bedarf“), ist die Summe eine Untergrenze
+– und das steht dann dabei, mit Namen:
+
+```
+je Portion   288 kcal   11,2 g Eiweiß   9 g Kohlenhydrate   23,7 g Fett
+Mindestens so viel – ohne Angabe: Basmatireis
+```
+
+Eine stillschweigend zu niedrige Kalorienzahl wäre schlechter als gar keine – dieselbe
+Haltung wie bei den Einheiten, die lieber abgelehnt als geraten werden. Ausnahme: trägt
+eine Zutat überall Nullen (Salz, Pfeffer), ändert auch eine unbekannte Menge nichts, und
+das Gericht gilt trotzdem als vollständig gerechnet.
+
+Die Artikel-Seite zeigt im Kopf, wie weit die Erfassung ist (`30 im Korpus · 30 mit
+Nährwerten`). Es lohnt sich, bei den kalorienstarken Zutaten anzufangen – Reis, Nudeln,
+Kartoffeln, Öl, Käse, Fleisch; das lange Ende der Gemüsesorten bewegt die Summe kaum.
+
+> Der Planer benutzt die Werte **nicht**. Wenn er das später soll, kostet es ein
+> weiteres Gewicht in `setting` – genauso wie der Angebots-Bonus. `general_plan.md`
+> zählt Nährwerte unter „Bewusst nicht geplant“; die Anzeige hier ist die kleine
+> Variante davon, ohne Diät-Funktionen.
+
+## Wie geplant wird
+
+Jeder Slot hat einen Bedarf (Esser zu Hause + Mitnehm-Portionen, Zeitbudget). Jedes
+Gericht bekommt einen Score – und **der Score ist die Begründung**: eine Liste benannter
+Beiträge, die die UI direkt anzeigt. Es gibt keinen zweiten Erklärungspfad.
+
+**Harte Kriterien** (Gericht scheidet aus): Aufwand passt nicht zum Zeitbudget · nicht
+mitnehmbar, obwohl der Slot Mitnehm-Portionen braucht · Portionen reichen nicht · falsche
+Mahlzeit · diese Woche schon eingeplant.
+
+**Weiche Kriterien** (Gewichte in der DB, Seite *Einstellungen*): Abwechslung nach
+Beilage / Protein / Küche, gestaffelt nach Abstand und **summiert** (das dritte Brot
+kostet mehr als das zweite) · Rotation · Bewertung · Portionsgenauigkeit ·
+Reste-Verwertung · Aufwand-Passung · Angebots-Ersparnis.
+
+**Reste:** Ein 3-Portionen-Gericht für zwei Esser erzeugt eine Reste-Portion mit
+Haltbarkeit 1–2 Tagen. Sie erscheint als eigene Karte in einem späteren Slot – aber nur,
+wenn sie dessen Bedarf **ganz** deckt. Eine Portion ernährt keine zwei Esser, und ein
+unterversorgter Slot wäre schlimmer als ein leerer, weil ihn niemand bemerkt.
+
+**Mitnehmen** wird auf dem *kochenden* Slot eingetragen: „Montag Abend, 2 zu Hause + 1
+mitnehmen“ heißt, dass Montagabend drei Portionen entstehen und eine davon Dienstag ins
+Büro geht.
+
+---
+
+## Tests
+
+```bash
+cd backend && uv run pytest -m "not live"     # 208 Tests: Domäne, API, Verträge
+cd frontend && npm test                        # 23 Tests: Wochen-Arithmetik, Formatierung
+```
+
+| Ebene | Was sie absichert |
+|---|---|
+| `tests/domain/` | Score, Planer, Reste, Einheiten, Nährwerte – pure Funktionen, Millisekunden |
+| Property-Tests | `PortionLedger`-Invarianten (nie überziehen, nie über die Haltbarkeit), Mengen-Aggregation |
+| Golden-File | `propose()` auf einer realistischen Bürowoche → Gewichtsänderungen erzeugen einen lesbaren Diff |
+| `tests/integration/` | Router + Service + Schema über `TestClient`, plus die echte Alembic-Migration |
+| `tests/contract/` | Bring!-Diff gegen einen Fake, Korbunio gegen `respx`-Cassettes |
+| Architektur-Test | `domain/` importiert kein I/O – die eine Grenze, die zählt |
+
+Golden-File aktualisieren, wenn Gewichte sich absichtlich ändern:
+
+```bash
+cd backend && UPDATE_GOLDEN=1 uv run pytest tests/domain/test_golden_week.py
+```
+
+Die `live`-Tests (echtes Bring!-Konto, echter Korbunio) laufen nur manuell:
+
+```bash
+cd backend && uv run pytest -m live
+```
+
+---
+
+## Wo was liegt
+
+```
+backend/src/mealplan/
+  domain/          PURE: Score, Planer, Reste, Einheiten, Diagnostik  ← der Wert
+  services/        Use-Cases, Transaktionen
+  db/              SQLAlchemy + Mapper (ORM ↔ Domäne)
+  integrations/    bring | offers | catalog  ← die fragilen Teile, hinter Ports
+  api/             Router + Pydantic-DTOs
+  cli/             mealplan-Kommandos
+  ports.py         Protocols: ShoppingListSync, OfferSource, BringCatalog, LlmPort
+frontend/src/
+  api/             aus /openapi.json generiert (npm run gen:api)
+  features/week/   Board, SlotCard, CandidateSheet, GridEditor
+  features/dishes/ Schnellerfassung, Zutatenzeilen, Kategorie-Chips
+```
+
+Die eine Trennlinie, die sich lohnt: **`domain/` ist I/O-frei**, abgesichert durch einen
+Test, der die Importe prüft. Alles andere ist absichtlich flach – Services sprechen
+SQLAlchemy direkt, kein Repository-Interface, kein CQRS.
+
+---
+
+## Offene Punkte
+
+- **Score-Gewichte final kalibrieren.** Die Defaults sind Startwerte; die echte
+  Kalibrierung braucht eure echte Gerichteliste. Weg: `mealplan plan` mit verschiedenen
+  Gewichten, oder direkt auf der Seite *Einstellungen*.
+- **PLZ und Edeka-Markt-ID** des Allfrisch-Marktes → `data/config.local.toml`, nicht ins
+  Repo (ARCHITECTURE.md §12).
+- **Korbunio** als Container testen (Spike 2), bevor Phase 2 scharf geschaltet wird.
+- **`article.piece_weight_g`** (Stück ↔ Gramm) ist im Schema vorgesehen, aber ungenutzt.
+  Erst umsetzen, wenn die Erfassung zeigt, dass es wirklich stört.
+- **Einkaufs-Split** (Haupt- vs. Zweitladen) ist als Domänenfunktion vorgesehen, aber
+  ohne Angebotsdaten wertlos – kommt mit Phase 2.
+
+## Erfolgskriterium
+
+Nicht die Feature-Liste, sondern: Findet das Montags-Ritual nach drei Wochen noch statt,
+und dauert es unter fünf Minuten? Messbar an der Zahl manueller Korrekturen nach dem
+Auto-Vorschlag und der Zahl der Einträge, die ihr hinterher doch von Hand in Bring!
+getippt habt.

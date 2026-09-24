@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "mealplan",
+      "runtimeExecutable": "backend/.venv/bin/python",
+      "runtimeArgs": ["-m", "uvicorn", "mealplan.main:app", "--host", "127.0.0.1", "--port", "8080"],
+      "port": 8080
+    }
+  ]
+}

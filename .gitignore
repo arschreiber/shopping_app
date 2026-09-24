@@ -1,0 +1,70 @@
+# ─── Laufzeitdaten ────────────────────────────────────────────────────────────
+# Alles unter data/ entsteht im Betrieb: SQLite-Datenbank, gespiegelte
+# Angebotsbilder, Bring!-Katalog-Cache, nächtliche Backups. Das Verzeichnis legt
+# die App beim Start selbst an (Settings.ensure_dirs), es braucht kein .gitkeep.
+data/
+*.sqlite3
+*.sqlite3-shm
+*.sqlite3-wal
+*.db
+
+# ─── Zugangsdaten und lokale Konfiguration ────────────────────────────────────
+# .env trägt das Bring!-Bot-Konto, config.local.toml die PLZ und die
+# Edeka-Markt-ID (ARCHITECTURE.md §12). Beides gehört nicht ins Repo -
+# die Vorlage .env.example schon.
+.env
+.env.*
+!.env.example
+config.local.toml
+data/config.local.toml
+*.pem
+*.key
+*.crt
+
+# ─── Python ───────────────────────────────────────────────────────────────────
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.hypothesis/
+.coverage
+coverage.xml
+htmlcov/
+
+# ─── Frontend ─────────────────────────────────────────────────────────────────
+node_modules/
+frontend/dist/
+frontend/dev-dist/
+.vite/
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Der gebaute Frontend-Bundle wird beim Deploy hierhin kopiert (im Docker-Build
+# erzeugt die Node-Stufe ihn frisch). Generiertes gehört nicht in die Historie.
+backend/src/mealplan/static/
+
+# ─── Werkzeuge ────────────────────────────────────────────────────────────────
+# .claude/launch.json ist Projektkonfiguration und wird versioniert; alles
+# Persönliche daneben nicht.
+.claude/settings.local.json
+.claude/*.local.json
+
+# ─── Editor und Betriebssystem ────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ─── Sonstiges ────────────────────────────────────────────────────────────────
+*.log
+*.bak
+*.orig

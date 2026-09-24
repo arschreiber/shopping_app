@@ -1,0 +1,95 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-ground text-ink font-sans text-base antialiased;
+    /* Ziffern in der Wochentabelle sollen untereinander stehen. */
+    font-variant-numeric: tabular-nums;
+    margin: 0;
+    min-height: 100dvh;
+  }
+
+  /* Ein einheitlicher Fokusring, sichtbar aber nicht laut - die Tastatur ist beim
+     Erfassen von 30-50 Gerichten der schnellste Weg (ARCHITECTURE.md §7). */
+  :focus-visible {
+    @apply outline-none ring-2 ring-accent/40 ring-offset-1 ring-offset-ground;
+  }
+
+  ::selection {
+    @apply bg-accent/15;
+  }
+
+  /* Die Knöpfe des Einstellungs-Icons werden in der Hintergrundfarbe ausgestanzt. */
+  :root {
+    --icon-bg: #faf9f7;
+  }
+  .bg-surface,
+  nav {
+    --icon-bg: #ffffff;
+  }
+
+  h1, h2, h3 {
+    @apply font-semibold text-ink;
+  }
+
+  input, select, textarea, button {
+    font: inherit;
+    color: inherit;
+  }
+}
+
+@layer components {
+  .label {
+    @apply text-2xs font-semibold uppercase tracking-wider text-ink-faint;
+  }
+
+  .card {
+    @apply rounded-md border border-line bg-surface;
+  }
+
+  .field {
+    @apply w-full rounded border border-line bg-surface px-2.5 py-1.5 text-sm
+           placeholder:text-ink-faint focus:border-accent-line;
+  }
+
+  .btn {
+    @apply inline-flex select-none items-center justify-center gap-1.5 rounded border
+           px-3 py-1.5 text-sm font-medium transition-colors duration-fast
+           disabled:cursor-not-allowed disabled:opacity-45;
+  }
+  .btn-primary {
+    @apply btn border-accent bg-accent text-white hover:bg-accent-hover;
+  }
+  .btn-secondary {
+    @apply btn border-line bg-surface text-ink hover:border-line-strong hover:bg-sunken;
+  }
+  .btn-ghost {
+    @apply btn border-transparent bg-transparent text-ink-muted hover:bg-sunken hover:text-ink;
+  }
+  .btn-sm {
+    @apply px-2 py-1 text-xs;
+  }
+
+  .chip {
+    @apply inline-flex items-center gap-1 rounded-full border border-line bg-surface
+           px-2 py-0.5 text-xs text-ink-muted;
+  }
+  .chip-accent {
+    @apply border-accent-line bg-accent-soft text-accent;
+  }
+
+  /* Tabellarische Trennlinien statt Karten-im-Karten-Look. */
+  .rule {
+    @apply border-t border-line;
+  }
+}

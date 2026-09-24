@@ -1,0 +1,62 @@
+# Heimserver-Setup (ARCHITECTURE.md §8).
+#
+# WICHTIG: `app` hat bewusst keine Authentifizierung. Port 8080 liegt offen im Heimnetz,
+# damit jedes Gerät ohne Tailscale-Client zugreifen kann. Daraus folgt genau eine Regel:
+# im Router *kein* Port-Forward auf 8080, und niemals einen öffentlich erreichbaren
+# Reverse-Proxy davorsetzen, ohne vorher Auth nachzurüsten. Von außen: Tailscale.
+
+services:
+  app:
+    build: .
+    image: mealplan:local
+    container_name: mealplan
+    restart: unless-stopped
+    ports:
+      - "0.0.0.0:8080:8080"
+    volumes:
+      - ./data:/data
+    env_file:
+      - .env
+    environment:
+      MEALPLAN_DATA_DIR: /data
+      MEALPLAN_KORBUNIO_URL: http://korbunio:8000
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/api/health"]
+      interval: 60s
+      timeout: 5s
+      start_period: 20s
+
+  # Phase 2 (general_plan.md §7): Angebots-Adapter für Edeka, Aldi Nord, Netto MD, Rewe.
+  # Nur im internen Compose-Netz erreichbar - die Abrufe laufen über die Heim-IP.
+  # Erst aktivieren, wenn Phase 1 drei Wochen im Alltag gehalten hat:
+  #   docker compose --profile offers up -d
+  korbunio:
+    image: ghcr.io/lesecuritae/korbunio:latest
+    container_name: mealplan-korbunio
+    restart: unless-stopped
+    profiles: ["offers"]
+    expose:
+      - "8000"
+    environment:
+      TZ: Europe/Berlin
+
+  # HTTPS auf dem Tailnet-Hostnamen - nötig, sobald die PWA auf den Homescreen soll
+  # (ARCHITECTURE.md §7: über http://<lan-ip> registriert kein Service-Worker).
+  #   tailscale cert <host>.<tailnet>.ts.net
+  #   docker compose --profile tailnet up -d
+  caddy:
+    image: caddy:2-alpine
+    container_name: mealplan-caddy
+    restart: unless-stopped
+    profiles: ["tailnet"]
+    ports:
+      - "443:443"
+    volumes:
+      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./data/certs:/certs:ro
+      - caddy-data:/data
+    depends_on:
+      - app
+
+volumes:
+  caddy-data:
