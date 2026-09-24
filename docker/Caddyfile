@@ -1,0 +1,13 @@
+# HTTPS auf dem Tailnet-Hostnamen. Zertifikat einmalig auf dem Host erzeugen:
+#   tailscale cert --cert-file data/certs/host.crt --key-file data/certs/host.key \
+#     <host>.<tailnet>.ts.net
+# Danach {$MEALPLAN_TAILNET_HOST} in .env setzen.
+#
+# Nur dieser Weg ist von außen erreichbar - und nur über das Tailnet, nicht über das
+# offene Internet.
+
+{$MEALPLAN_TAILNET_HOST:localhost} {
+	tls /certs/host.crt /certs/host.key
+	encode zstd gzip
+	reverse_proxy app:8080
+}
