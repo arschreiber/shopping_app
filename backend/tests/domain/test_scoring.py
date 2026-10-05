@@ -106,17 +106,29 @@ def test_a_repeated_category_costs_more_every_time():
     assert third < second < 0
 
 
-def test_quick_dish_fits_a_tight_evening():
+def test_time_is_a_rule_not_a_bonus():
+    """Bei wenig Zeit darf nur Schnelles hin - ein Bonus dafür bekäme dort jedes frische
+    Gericht und würde nur die Reste zurücksetzen."""
     quick = dish(1, "Reispfanne", effort=Effort.QUICK)
     snap = snap_with(quick)
     tight = score(quick, slot(0, Meal.DINNER, time_budget=TimeBudget.LITTLE), Plan(), snap)
-    assert rules(tight)["quick_fit"] > 0
+    normal = score(quick, slot(0, Meal.DINNER), Plan(), snap)
+    assert tight.total == normal.total
 
 
 def test_doubling_costs_a_little()  :
     two = dish(1, "Lachs", portions=2)
     snap = snap_with(two)
     single = score(two, slot(0, Meal.DINNER), Plan(), snap)
-    doubled = score(two, slot(0, Meal.DINNER), Plan(), snap, doubled=True)
+    doubled = score(two, slot(0, Meal.DINNER), Plan(), snap, factor=2)
     assert rules(doubled)["doubling"] < 0
     assert doubled.total < single.total  # ohne Mitnehm-Bedarf lohnt Verdoppeln nicht
+
+
+def test_cooking_a_single_portion_recipe_twice_is_no_extra_effort():
+    """Doppelt ist der normale Gebrauch eines 1er-Rezepts, kein großer Topf."""
+    burger = dish(1, "Burger", portions=1)
+    snap = snap_with(burger)
+    twice = score(burger, slot(0, Meal.DINNER), Plan(), snap, factor=2)
+    assert "doubling" not in rules(twice)
+    assert rules(twice)["exact_portions"] > 0

@@ -75,6 +75,13 @@ export const IconWarn = ({ className }: Props) => (
   </Svg>
 );
 
+export const IconClock = ({ className }: Props) => (
+  <Svg className={className}>
+    <circle cx="8" cy="8" r="5.5" />
+    <path d="M8 5v3l2 1.5" />
+  </Svg>
+);
+
 export const IconLeftover = ({ className }: Props) => (
   <Svg className={className}>
     <path d="M2.5 6.5h11M4 6.5v6a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-6M6.5 4.5 8 2.5l1.5 2" />

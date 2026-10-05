@@ -25,10 +25,10 @@ def list_articles(session: SessionDep, q: str | None = None) -> list[ArticleOut]
 
 @router.get("/suggest", response_model=list[ArticleSuggestion])
 def suggest(session: SessionDep, q: str = Query(min_length=1)) -> list[ArticleSuggestion]:
-    """Fuzzy-Suche für die Zutaten-Combobox (ARCHITECTURE.md §7)."""
+    """Namenssuche für die Zutaten-Combobox: erst Präfix, dann Teilstring."""
     return [
-        ArticleSuggestion(article=ArticleOut.of(article), score=score)
-        for article, score in service.suggest(session, q)
+        ArticleSuggestion(article=ArticleOut.of(article), kind=kind)
+        for article, kind in service.suggest(session, q)
     ]
 
 
@@ -55,9 +55,9 @@ def create_article(session: SessionDep, payload: ArticleIn) -> ArticleOut:
         is_watchlist=payload.is_watchlist,
         aliases=payload.aliases,
         kcal=payload.kcal,
-        protein_g=payload.protein_g,
         carbs_g=payload.carbs_g,
         fat_g=payload.fat_g,
+        protein_g=payload.protein_g,
     )
     session.flush()
     session.refresh(article)

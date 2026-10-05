@@ -42,12 +42,18 @@ const GROUPS: { title: string; hint: string; keys: string[] }[] = [
     ],
   },
   {
-    title: "Bewertung, Aufwand, Angebote",
+    title: "Zufall",
+    hint:
+      "Bei jedem „Woche vorschlagen“ bekommt jedes frische Gericht 0 bis so viele " +
+      "Punkte dazu – ähnlich gute wechseln sich ab. Ob Reste drankommen, entscheidet er " +
+      "nie. 0 = immer derselbe Plan.",
+    keys: ["randomness"],
+  },
+  {
+    title: "Bewertung, Angebote",
     hint: "Angebots-Bonus wirkt erst, wenn Angebotsdaten da sind (Phase 2).",
     keys: [
       "rating_per_star",
-      "quick_when_little_time",
-      "effort_slack",
       "offer_per_euro",
       "offer_cap",
     ],
@@ -73,10 +79,9 @@ const LABELS: Record<string, string> = {
   leftover_assignment: "Reste statt neu kochen",
   doubling: "verdoppeln",
   rating_per_star: "pro Stern über 3",
-  quick_when_little_time: "schnell bei wenig Zeit",
-  effort_slack: "aufwendig bei viel Zeit",
   offer_per_euro: "pro Euro Ersparnis",
   offer_cap: "Obergrenze Angebots-Bonus",
+  randomness: "Zufall: bis zu so viele Punkte",
 };
 
 export function SettingsRoute() {

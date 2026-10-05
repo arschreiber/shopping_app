@@ -141,7 +141,7 @@ class PortionLedger:
                 ledger.record_cook(
                     key,
                     dish.id,
-                    dish.portions_for(doubled=assignment.doubled),
+                    dish.portions_for(assignment.factor),
                     slot.demand,
                 )
         for _key, assignment in plan.items():

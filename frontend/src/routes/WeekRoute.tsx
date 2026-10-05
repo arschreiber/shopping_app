@@ -2,7 +2,7 @@
  * Die Seite des Montags-Rituals (general_plan.md §9): Raster ausfüllen → Vorschlag →
  * zwei, drei Tauschs → Liste prüfen → Bring!. Alles auf einer Seite, ohne Seitenwechsel.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import type { Candidate, Meal, Slot, SlotIn } from "../api/client";
 import {
@@ -15,6 +15,7 @@ import {
   usePropose,
   useReroll,
   useSaveGrid,
+  useSetCancelled,
   useWeek,
 } from "../api/hooks";
 import { IconChevronLeft, IconChevronRight, IconDice } from "../components/Icons";
@@ -23,7 +24,7 @@ import { errorText, useToast } from "../components/Toast";
 import { WarningList } from "../components/Warnings";
 import { Board } from "../features/week/Board";
 import { CandidateSheet } from "../features/week/CandidateSheet";
-import { GridEditor } from "../features/week/GridEditor";
+import { toSlotInputs } from "../features/week/SlotSettings";
 import { currentIsoWeek, formatRange, parseIso, shiftIsoWeek } from "../lib/dates";
 
 export function WeekRoute() {
@@ -32,10 +33,23 @@ export function WeekRoute() {
   const navigate = useNavigate();
   const toast = useToast();
 
-  const [gridOpen, setGridOpen] = useState(false);
+  // Raster bearbeiten: `null` = das Board zeigt Gerichte, sonst die Einstellungen im
+  // Entwurf. Gespeichert wird erst per Knopf, mit `version` gegen den Konflikt
+  // Laptop/Handy.
+  const [gridDraft, setGridDraft] = useState<SlotIn[] | null>(null);
+  const editing = gridDraft !== null;
   const [selected, setSelected] = useState<{ day: number; meal: Meal } | null>(null);
 
   const week = useWeek(iso);
+
+  // Andere Woche = anderer Entwurf. Den alten stehen zu lassen, hieße ihn auf die neue
+  // Woche zu speichern.
+  useEffect(() => setGridDraft(null), [iso]);
+  // Fremde Änderungen (anderes Gerät, "wie letzte Woche") während des Bearbeitens
+  // übernehmen, sonst würde der Entwurf gegen eine veraltete Version gespeichert.
+  useEffect(() => {
+    if (week.data) setGridDraft((current) => (current ? toSlotInputs(week.data) : current));
+  }, [week.data?.version]);
   const candidates = useCandidates(iso, selected?.day ?? 0, selected?.meal ?? "LUNCH", !!selected);
 
   const saveGrid = useSaveGrid(iso);
@@ -44,6 +58,7 @@ export function WeekRoute() {
   const assign = useAssign(iso);
   const clearSlot = useClearSlot(iso);
   const pin = usePin(iso);
+  const setCancelled = useSetCancelled(iso);
   const clearWeek = useClearWeek(iso);
   const copyWeek = useCopyWeek(iso);
 
@@ -71,7 +86,7 @@ export function WeekRoute() {
         meal: selected.meal,
         kind: assignment.kind as "DISH" | "LEFTOVER",
         dish_id: assignment.dish_id,
-        doubled: assignment.doubled,
+        factor: assignment.factor,
         leftover_source_day: assignment.leftover_source_day,
         leftover_source_meal: assignment.leftover_source_meal,
         portions_used: assignment.portions_used,
@@ -92,7 +107,7 @@ export function WeekRoute() {
       meal: to.meal,
       kind: source.assignment.kind as "DISH" | "LEFTOVER",
       dish_id: source.assignment.dish_id,
-      doubled: source.assignment.doubled,
+      factor: source.assignment.factor,
     };
     // Zuerst den Zielslot freimachen, damit die "einmal pro Woche"-Regel nicht greift.
     clearSlot.mutate(
@@ -110,7 +125,7 @@ export function WeekRoute() {
                   meal: from.meal,
                   kind: target.assignment.kind as "DISH" | "LEFTOVER",
                   dish_id: target.assignment.dish_id,
-                  doubled: target.assignment.doubled,
+                  factor: target.assignment.factor,
                 },
                 { onError: fail },
               );
@@ -145,6 +160,29 @@ export function WeekRoute() {
 
   const data = week.data;
   const { week: weekNumber } = parseIso(iso);
+  const gridDirty =
+    gridDraft !== null && JSON.stringify(gridDraft) !== JSON.stringify(toSlotInputs(data));
+
+  function saveGridDraft() {
+    if (!gridDraft) return;
+    if (!gridDirty) {
+      setGridDraft(null);
+      return;
+    }
+    saveGrid.mutate(
+      { slots: gridDraft, version: data.version },
+      {
+        onError: (error) => {
+          fail(error);
+          week.refetch();
+        },
+        onSuccess: () => {
+          toast.show("Raster gespeichert", "ok");
+          setGridDraft(null);
+        },
+      },
+    );
+  }
   const errors = data.warnings.filter((warning) => warning.level === "ERROR");
   const others = data.warnings.filter((warning) => warning.level !== "ERROR");
 
@@ -180,14 +218,15 @@ export function WeekRoute() {
         </span>
 
         <div className="ml-auto flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setGridOpen(!gridOpen)}
-            aria-expanded={gridOpen}
-            className="btn-secondary btn-sm"
-          >
-            Raster {gridOpen ? "schließen" : "bearbeiten"}
-          </button>
+          {!editing && (
+            <button
+              type="button"
+              onClick={() => setGridDraft(toSlotInputs(data))}
+              className="btn-secondary btn-sm"
+            >
+              Raster bearbeiten
+            </button>
+          )}
           <button
             type="button"
             onClick={() =>
@@ -201,32 +240,53 @@ export function WeekRoute() {
             }
             disabled={copyWeek.isPending}
             className="btn-secondary btn-sm"
-            title="Bürotage und Zeitbudget der Vorwoche übernehmen (nicht die Gerichte)"
+            title="Raster der Vorwoche übernehmen: wer isst, mitnehmen, Zeit (nicht die Gerichte)"
           >
             wie letzte Woche
           </button>
-          <button
-            type="button"
-            onClick={() =>
-              propose.mutate(
-                { onlyEmpty: data.planned_count > 0 },
-                {
-                  onError: fail,
-                  onSuccess: (result) =>
-                    toast.show(
-                      `${result.planned_count} von ${result.needed_count} Slots belegt`,
-                      "ok",
-                    ),
-                },
-              )
-            }
-            disabled={busy}
-            className="btn-primary btn-sm order-first sm:order-none"
-          >
-            <IconDice className="h-3.5 w-3.5" />
-            {data.planned_count > 0 ? "Lücken füllen" : "Woche vorschlagen"}
-          </button>
-          {data.planned_count > 0 && (
+          {editing && (
+            <>
+              <button
+                type="button"
+                onClick={() => setGridDraft(null)}
+                className="btn-ghost btn-sm"
+              >
+                abbrechen
+              </button>
+              <button
+                type="button"
+                onClick={saveGridDraft}
+                disabled={saveGrid.isPending}
+                className="btn-primary btn-sm order-first sm:order-none"
+              >
+                {saveGrid.isPending ? "speichert …" : "Raster speichern"}
+              </button>
+            </>
+          )}
+          {!editing && (
+            <button
+              type="button"
+              onClick={() =>
+                propose.mutate(
+                  { onlyEmpty: data.planned_count > 0 },
+                  {
+                    onError: fail,
+                    onSuccess: (result) =>
+                      toast.show(
+                        `${result.planned_count} von ${result.needed_count} Slots belegt`,
+                        "ok",
+                      ),
+                  },
+                )
+              }
+              disabled={busy}
+              className="btn-primary btn-sm order-first sm:order-none"
+            >
+              <IconDice className="h-3.5 w-3.5" />
+              {data.planned_count > 0 ? "Lücken füllen" : "Woche vorschlagen"}
+            </button>
+          )}
+          {!editing && data.planned_count > 0 && (
             <button
               type="button"
               onClick={() => clearWeek.mutate({ keepPinned: true }, { onError: fail })}
@@ -240,29 +300,21 @@ export function WeekRoute() {
         </div>
       </header>
 
-      {gridOpen && (
-        <div className="card overflow-hidden">
-          <GridEditor
-            week={data}
-            iso={iso}
-            saving={saveGrid.isPending}
-            onSave={(slots: SlotIn[], version: number) =>
-              saveGrid.mutate(
-                { slots, version },
-                {
-                  onError: (error) => {
-                    fail(error);
-                    week.refetch();
-                  },
-                  onSuccess: () => toast.show("Raster gespeichert", "ok"),
-                },
-              )
-            }
-          />
-        </div>
+      {editing && (
+        <p className="rounded-md border border-accent-line bg-accent-soft/50 px-3 py-2 text-xs
+                      text-ink-muted">
+          <span className="font-medium text-accent">Raster bearbeiten</span> – pro Mahlzeit:
+          wer zu Hause isst, wer etwas mitnimmt und ob{" "}
+          <span className="font-medium text-ink">wenig Zeit</span> ist (dann nur schnelle
+          Gerichte oder Reste).{" "}
+          <span className="font-medium text-ink">Mitnehmen</span> trägst du bei der Mahlzeit
+          ein, die unterwegs gegessen wird:{" "}
+          <span className="font-medium text-ink">vorgekocht</span> kommt bevorzugt aus Resten,{" "}
+          <span className="font-medium text-ink">frisch</span> wird in dieser Mahlzeit gekocht.
+        </p>
       )}
 
-      {errors.length > 0 && (
+      {!editing && errors.length > 0 && (
         <WarningList warnings={errors} onSelect={(day, meal) => setSelected({ day, meal })} />
       )}
 
@@ -276,10 +328,28 @@ export function WeekRoute() {
         onReroll={(slot) =>
           reroll.mutate({ day: slot.day, meal: slot.meal }, { onError: fail })
         }
+        onClear={(slot) =>
+          clearSlot.mutate({ day: slot.day, meal: slot.meal }, { onError: fail })
+        }
         onSwap={swap}
+        editing={
+          gridDraft
+            ? {
+                draft: gridDraft,
+                onChange: (day, meal, changes) =>
+                  setGridDraft((current) =>
+                    current
+                      ? current.map((slot) =>
+                          slot.day === day && slot.meal === meal ? { ...slot, ...changes } : slot,
+                        )
+                      : current,
+                  ),
+              }
+            : undefined
+        }
       />
 
-      {others.length > 0 && (
+      {!editing && others.length > 0 && (
         <section>
           <h2 className="label mb-2">Hinweise zum Plan</h2>
           <WarningList
@@ -295,12 +365,28 @@ export function WeekRoute() {
         slot={selectedSlot}
         candidates={candidates.data ?? []}
         loading={candidates.isLoading}
-        busy={assign.isPending || clearSlot.isPending}
+        busy={assign.isPending || clearSlot.isPending || setCancelled.isPending}
         onClose={() => setSelected(null)}
         onChoose={choose}
         onClear={() => {
           if (!selected) return;
           clearSlot.mutate(selected, { onError: fail, onSuccess: () => setSelected(null) });
+        }}
+        onCancel={(cancelled) => {
+          if (!selected) return;
+          setCancelled.mutate(
+            { ...selected, cancelled },
+            {
+              onError: fail,
+              onSuccess: () => {
+                setSelected(null);
+                toast.show(
+                  cancelled ? "Ausgefallen – zählt nicht als gekocht" : "Zählt wieder als gekocht",
+                  "ok",
+                );
+              },
+            },
+          );
         }}
       />
     </div>

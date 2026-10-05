@@ -24,9 +24,9 @@ const BASIS_LABEL: Record<Unit, string> = {
 
 const NUTRITION_FIELDS: [string, string, string][] = [
   ["kcal", "Energie", "kcal"],
-  ["protein_g", "Eiweiß", "g"],
   ["carbs_g", "Kohlenhydrate", "g"],
   ["fat_g", "Fett", "g"],
+  ["protein_g", "Eiweiß", "g"],
 ];
 
 export function ArticlesRoute() {
@@ -213,9 +213,9 @@ function ArticleEditor({
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [nutrition, setNutrition] = useState({
     kcal: article?.kcal ?? "",
-    protein_g: article?.protein_g ?? "",
     carbs_g: article?.carbs_g ?? "",
     fat_g: article?.fat_g ?? "",
+    protein_g: article?.protein_g ?? "",
   });
 
   async function loadSuggestions() {

@@ -155,6 +155,39 @@ def suggest(
     return ordered[:limit]
 
 
+def search(
+    query: str, choices: dict[int, str], *, limit: int = 50
+) -> list[tuple[int, str]]:
+    """Namenssuche für die Zutaten-Combobox: erst Präfix, dann Teilstring.
+
+    Bewusst ohne Ähnlichkeitsmaß und ohne Schwelle. Fuzzy-Scores brauchen erst ein
+    halbes Wort, bevor sie über die Schwelle kommen - beim Tippen fühlt sich das an,
+    als gäbe es den Artikel nicht. Zwei Buchstaben sollen reichen: "re" zeigt "Reis"
+    und "Reibekäse", danach alles, was "re" irgendwo enthält. Die Reihenfolge ist die
+    ganze Aussage, eine Grenze zwischen den Gruppen gibt es nicht.
+
+    Fuzzy-Treffer bleiben dem Parser vorbehalten (`suggest`): dort kommt der Name aus
+    einem eingefügten Rezept und niemand kann nachtippen.
+    """
+    needle = normalize(query)
+    if not needle:
+        return []
+    prefix: list[tuple[str, int]] = []
+    contains: list[tuple[str, int]] = []
+    for key, value in choices.items():
+        candidate = normalize(value)
+        if not candidate:
+            continue
+        if candidate.startswith(needle):
+            prefix.append((candidate, key))
+        elif needle in candidate:
+            contains.append((candidate, key))
+    prefix.sort()
+    contains.sort()
+    hits = [(key, "PREFIX") for _, key in prefix] + [(key, "CONTAINS") for _, key in contains]
+    return hits[:limit]
+
+
 def rank(query: str, choices: dict[int, str], *, limit: int = 8) -> list[tuple[int, float]]:
     """Sortierte Vorschläge für die Combobox - toleranter als `best_match`."""
     needle = normalize(query)

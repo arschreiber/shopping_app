@@ -1,64 +1,59 @@
-Mo Mittag  2+0 P,  viel Zeit [aus Vorhandenem]  ->  -
-Mo Abend   2+1 P,  viel Zeit  ->  Gericht 24 (3 P) [+16.0]
-                · seit 8 Wochen nicht gekocht
+Mo Mittag  2+0 P, normal Zeit [aus Vorhandenem]  ->  -
+Mo Abend   2+1 P, normal Zeit  ->  Gericht 18 (3 P) [+17.0]
+                · seit 11 Wochen nicht gekocht
                 · 3 Portionen passen genau
-                · aufwendig, aber Zeit ist da
-                · gleiche Beilage wie Do Mittag (Polenta)
-Di Mittag  0+0 P,  viel Zeit  ->  -
-Di Abend   2+0 P,  viel Zeit  ->  Gericht 17 (3 P) [+4.0]
-                · seit 10 Wochen nicht gekocht
-                · gleiches Protein wie Do Mittag (Hirtenkäse)
+Di Mittag  0+0 P, normal Zeit  ->  -
+Di Abend   2+0 P, normal Zeit  ->  Gericht 14 (3 P) [-0.5]
+                · seit 7 Wochen nicht gekocht
+                · gleiche Beilage wie So Abend (Nudeln)
+                · gleiches Protein wie Sa Abend (Hähnchen)
                 · 1 Portion bleibt übrig
-Mi Mittag  2+0 P, wenig Zeit  ->  Gericht 22 (2 P) [+7.0]
+Mi Mittag  2+0 P,  wenig Zeit  ->  Gericht 22 (2 P) [+4.0]
                 · seit 6 Wochen nicht gekocht
                 · 2 Portionen passen genau
-                · schnell, passt zu wenig Zeit
                 · gleiches Protein wie Sa Mittag (Rind)
                 · gleiche Beilage wie Do Abend (Brot) (+1 weitere)
-Mi Abend   2+0 P, wenig Zeit  ->  Gericht 7 (2 P) [+13.0]
+Mi Abend   2+0 P,  wenig Zeit  ->  Gericht 7 (2 P) [+10.0]
                 · seit 9 Wochen nicht gekocht
                 · 2 Portionen passen genau
-                · schnell, passt zu wenig Zeit
-                · gleiche Beilage wie So Abend (Reis)
-                · gleiches Protein wie So Mittag (Hülsenfrüchte)
-Do Mittag  2+0 P,  viel Zeit  ->  Gericht 18 (3 P) [+3.0]
-                · seit 11 Wochen nicht gekocht
-                · aufwendig, aber Zeit ist da
-                · gleiche Beilage wie Mo Abend (Polenta)
-                · gleiches Protein wie Di Abend (Hirtenkäse)
+                · gleiche Beilage wie Sa Abend (Reis)
+                · gleiches Protein wie So Abend (Hülsenfrüchte)
+Do Mittag  2+0 P, normal Zeit  ->  Gericht 23 (3 P) [+6.5]
+                · seit 7 Wochen nicht gekocht
                 · 1 Portion bleibt übrig
-Do Abend   2+2 P,  viel Zeit  ->  Gericht 16 ×2 (4 P) [+5.0]
+Do Abend   2+2 P, normal Zeit  ->  Gericht 16 ×2 (4 P) [+5.0]
                 · seit 9 Wochen nicht gekocht
                 · 4 Portionen passen genau
                 · verdoppelt (Mehraufwand)
-                · gleiches Protein wie Sa Abend (Fisch)
-                · gleiche Beilage wie Sa Abend (Brot) (+1 weitere)
-Fr Mittag  0+0 P,  viel Zeit  ->  -
-Fr Abend   0+0 P,  viel Zeit [auswärts]  ->  -
-Sa Mittag  2+0 P,  viel Zeit  ->  Gericht 9 (3 P) [+6.0]
+                · gleiches Protein wie So Mittag (Fisch)
+                · gleiche Beilage wie So Mittag (Brot) (+1 weitere)
+Fr Mittag  0+0 P, normal Zeit  ->  -
+Fr Abend   0+0 P, normal Zeit [auswärts]  ->  -
+Sa Mittag  2+0 P, normal Zeit  ->  Gericht 9 (3 P) [+4.0]
                 · seit 11 Wochen nicht gekocht
-                · aufwendig, aber Zeit ist da
                 · gleiches Protein wie Mi Mittag (Rind)
                 · 1 Portion bleibt übrig
-Sa Abend   2+0 P,  viel Zeit  ->  Gericht 4 (2 P) [+4.0]
+Sa Abend   2+0 P, normal Zeit  ->  Gericht 13 (2 P) [+7.0]
+                · seit 6 Wochen nicht gekocht
+                · 2 Portionen passen genau
+                · gleiche Beilage wie Mi Abend (Reis)
+                · gleiches Protein wie Di Abend (Hähnchen)
+So Mittag  2+0 P, normal Zeit  ->  Gericht 4 (2 P) [+4.0]
                 · seit 6 Wochen nicht gekocht
                 · 2 Portionen passen genau
                 · gleiches Protein wie Do Abend (Fisch)
                 · gleiche Beilage wie Do Abend (Brot) (+1 weitere)
-So Mittag  2+0 P,  viel Zeit  ->  Gericht 8 (3 P) [+4.0]
+So Abend   2+0 P, normal Zeit  ->  Gericht 8 (3 P) [+1.0]
                 · seit 10 Wochen nicht gekocht
+                · gleiche Beilage wie Di Abend (Nudeln)
                 · gleiches Protein wie Mi Abend (Hülsenfrüchte)
                 · 1 Portion bleibt übrig
-So Abend   2+0 P,  viel Zeit  ->  Gericht 13 (2 P) [+11.0]
-                · seit 6 Wochen nicht gekocht
-                · 2 Portionen passen genau
-                · gleiche Beilage wie Mi Abend (Reis)
 
-Gesamtscore: 73.0
+Gesamtscore: 58.0
 
 Warnungen:
 [!] 3× Brot diese Woche (Beilage)
-[i] Di Abend: 1 Portion(en) Gericht 17 bleiben übrig
-[i] Do Mittag: 1 Portion(en) Gericht 18 bleiben übrig
+[i] Di Abend: 1 Portion(en) Gericht 14 bleiben übrig
+[i] Do Mittag: 1 Portion(en) Gericht 23 bleiben übrig
 [i] Sa Mittag: 1 Portion(en) Gericht 9 bleiben übrig
-[i] So Mittag: 1 Portion(en) Gericht 8 bleiben übrig
+[i] So Abend: 1 Portion(en) Gericht 8 bleiben übrig

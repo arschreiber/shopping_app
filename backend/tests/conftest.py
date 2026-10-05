@@ -43,6 +43,8 @@ def dish(
     *,
     portions: int = 3,
     packable: bool = True,
+    allow_double: bool = True,
+    allow_triple: bool = False,
     effort: Effort = Effort.NORMAL,
     suitable_for: SuitableFor = SuitableFor.BOTH,
     rating: int | None = None,
@@ -63,6 +65,8 @@ def dish(
         name=name,
         portions=portions,
         packable=packable,
+        allow_double=allow_double,
+        allow_triple=allow_triple,
         effort=effort,
         suitable_for=suitable_for,
         rating=rating,
@@ -77,7 +81,7 @@ def slot(
     *,
     eaters_home: int = 2,
     packed_portions: int = 0,
-    time_budget: TimeBudget = TimeBudget.PLENTY,
+    time_budget: TimeBudget = TimeBudget.NORMAL,
     **kwargs,
 ) -> SlotSpec:
     return SlotSpec(
@@ -90,7 +94,7 @@ def slot(
 
 
 def full_week(**overrides: SlotSpec) -> tuple[SlotSpec, ...]:
-    """Standardraster: beide Mahlzeiten, zwei Esser, viel Zeit."""
+    """Standardraster: beide Mahlzeiten, zwei Esser, normale Zeit."""
     slots = []
     for day in range(7):
         for meal in (Meal.LUNCH, Meal.DINNER):
@@ -117,8 +121,7 @@ def sample_dishes() -> list[DishSpec]:
         dish(3, "Spaghetti Bolognese", side="Nudeln", protein="Rind", cuisine="italienisch"),
         dish(4, "Linsencurry", side="Reis", protein="Hülsenfrüchte", effort=Effort.QUICK),
         dish(5, "Hähnchen-Gemüse-Pfanne", side="Reis", protein="Hähnchen"),
-        dish(6, "Kartoffelgratin", portions=2, side="Kartoffeln", protein="vegetarisch",
-             effort=Effort.ELABORATE),
+        dish(6, "Kartoffelgratin", portions=2, side="Kartoffeln", protein="vegetarisch"),
         dish(7, "Nudelauflauf", side="Nudeln", protein="Hirtenkäse"),
         dish(8, "Fischstäbchen mit Kartoffelsalat", portions=2, side="Kartoffeln",
              protein="Fisch", effort=Effort.QUICK, packable=False),
@@ -138,7 +141,7 @@ def big_pool() -> list[DishSpec]:
                 f"Gericht {i + 1}",
                 portions=2 if i % 3 == 0 else 3,
                 packable=i % 7 != 0,
-                effort=(Effort.QUICK, Effort.NORMAL, Effort.ELABORATE)[i % 3],
+                effort=Effort.QUICK if i % 3 == 0 else Effort.NORMAL,
                 side=sides[i % len(sides)],
                 protein=proteins[(i // 2) % len(proteins)],
                 weeks_since_cooked=3 + (i % 9),

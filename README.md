@@ -172,7 +172,7 @@ uv run mealplan seed-demo                        # Beispieldaten
 `plan` gibt pro Slot die Begründung aus – dieselben Score-Beiträge, die die UI zeigt:
 
 ```
-Mo Abend   2+1 P,  viel Zeit  ->  Hähnchen-Curry (3 P) [+16.0]
+Mo Abend   2+1 P, normal Zeit  ->  Hähnchen-Curry (3 P) [+16.0]
                 · seit 8 Wochen nicht gekocht
                 · 3 Portionen passen genau
                 · gleiche Beilage wie Do Mittag (Reis)
@@ -212,7 +212,7 @@ Einheiten-Dimensionen (2 Stück vs. 150 g) werden abgelehnt statt geraten.
 Optional und bewusst nur im **Gerichte-Tab** – der Wochenplan und die Einkaufsliste
 bleiben davon frei (ein Test hält diese Grenze fest).
 
-Jede Zutat kann vier Angaben tragen: Energie, Eiweiß, Kohlenhydrate, Fett. Die
+Jede Zutat kann vier Angaben tragen: Energie, Kohlenhydrate, Fett, Eiweiß. Die
 Bezugsgröße steckt schon in der Einheit und braucht kein eigenes Feld – **je 100 g**,
 **je 100 ml** oder **je Stück**. Damit trägt eine Zucchini ihre Werte je Stück, und das
 im Schema vorgesehene `piece_weight_g` bleibt weiterhin ungenutzt.
@@ -226,7 +226,7 @@ steht sie ohne Menge im Rezept („Olivenöl nach Bedarf“), ist die Summe eine
 – und das steht dann dabei, mit Namen:
 
 ```
-je Portion   288 kcal   11,2 g Eiweiß   9 g Kohlenhydrate   23,7 g Fett
+je Portion   288 kcal   9 g Kohlenhydrate   23,7 g Fett   11,2 g Eiweiß
 Mindestens so viel – ohne Angabe: Basmatireis
 ```
 
@@ -250,31 +250,72 @@ Jeder Slot hat einen Bedarf (Esser zu Hause + Mitnehm-Portionen, Zeitbudget). Je
 Gericht bekommt einen Score – und **der Score ist die Begründung**: eine Liste benannter
 Beiträge, die die UI direkt anzeigt. Es gibt keinen zweiten Erklärungspfad.
 
-**Harte Kriterien** (Gericht scheidet aus): Aufwand passt nicht zum Zeitbudget · nicht
+**Harte Kriterien** (Gericht scheidet aus): bei *wenig Zeit* ein Gericht, das nicht
+*schnell* ist · nicht
 mitnehmbar, obwohl der Slot Mitnehm-Portionen braucht · Portionen reichen nicht · falsche
 Mahlzeit · diese Woche schon eingeplant.
+
+**Vervielfachen:** Ein 2-Portionen-Gericht lässt sich verdoppeln, wenn der Schalter
+*doppelt möglich* am Gericht an ist – manches passt schlicht nicht in doppelter Menge in
+die Pfanne, und das weiß nur die Küche, nicht der Planer. Ein 1-Portionen-Gericht ist ein
+Rezept für eine Person; *doppelt möglich* und *dreifach möglich* lassen sich dort
+gleichzeitig wählen, und der Planer bietet es in jeder erlaubten Größe an („Burger
+(doppelt)“). 3-Portionen-Gerichte werden nie vervielfacht.
 
 **Weiche Kriterien** (Gewichte in der DB, Seite *Einstellungen*): Abwechslung nach
 Beilage / Protein / Küche, gestaffelt nach Abstand und **summiert** (das dritte Brot
 kostet mehr als das zweite) · Rotation · Bewertung · Portionsgenauigkeit ·
-Reste-Verwertung · Aufwand-Passung · Angebots-Ersparnis.
+Reste-Verwertung · Angebots-Ersparnis.
+
+**Zeit und Aufwand** haben je zwei Stufen. Ein Gericht ist *normal* oder *schnell* (unter
+20 Minuten), eine Mahlzeit hat *normale* oder *wenig Zeit* – Standard ist beide Male
+*normal*. Bei wenig Zeit kommen nur schnelle Gerichte oder Reste in Frage; im Board steht
+dort eine kleine Uhr. Diese Mahlzeiten füllt der Planer zuerst, damit die schnellen
+Gerichte nicht vorher an normalen Tagen verbraucht sind. Punkte gibt der Aufwand keine:
+ein Bonus bekäme bei wenig Zeit ohnehin jedes frische Gericht und würde nur die Reste
+zurücksetzen. Von Hand lässt sich trotzdem ein normales Gericht dorthin legen – dann
+meldet sich der Plan mit einem Hinweis.
+
+**Zufall:** Jedes „Woche vorschlagen“ zieht einen neuen Zufallswert (an der Woche
+gespeichert, also nachstellbar), und beim Auswählen bekommt jedes frische Gericht 0 bis
+*Zufall* Punkte dazu (Standard 6, Seite *Einstellungen*). Ähnlich gute Gerichte wechseln
+sich so ab; eins mit klarem Abzug bleibt draußen. Ob Reste drankommen, entscheidet immer
+der echte Score. Die angezeigten Punkte und Begründungen enthalten keinen Zufall.
+**Neu würfeln** zieht aus den fünf besten *anderen* Gerichten (jedes in seiner
+bestpassenden Größe) und füllt eine Mahlzeit, die von den Resten des alten Gerichts
+leben sollte, gleich neu.
+
+**Niemand da:** „auswärts“ im Raster ist eine Abkürzung für 0 zu Hause, 0 mitnehmen.
+Wer eine verplante Mahlzeit so umstellt, nimmt ihr Gericht samt davon abhängiger
+Reste aus dem Plan – und von der Einkaufsliste.
+
+**Gekocht oder ausgefallen:** Der Plan ist zugleich der Koch-Verlauf. Ein geplantes
+Gericht zählt ab seinem Tag als gekocht – dafür muss niemand etwas abhaken. Ist es
+ausgefallen, die Karte antippen → *ausgefallen*; dann bleibt es durchgestrichen im Plan
+stehen und zählt nicht (*doch gekocht* nimmt das zurück). Für die Abwechslung sieht eine
+Woche alles, was in den Wochen davor geplant ist, auch wenn es noch bevorsteht – wer
+Woche 43 plant, wiederholt nicht, was in 42 dran ist. Die Woche selbst zählt nicht als
+ihr eigener Verlauf. Gerechnet wird in Kalenderwochen: Mittwoch letzter Woche ist am
+Montag „vor 1 Woche“.
 
 **Reste:** Ein 3-Portionen-Gericht für zwei Esser erzeugt eine Reste-Portion mit
 Haltbarkeit 1–2 Tagen. Sie erscheint als eigene Karte in einem späteren Slot – aber nur,
 wenn sie dessen Bedarf **ganz** deckt. Eine Portion ernährt keine zwei Esser, und ein
 unterversorgter Slot wäre schlimmer als ein leerer, weil ihn niemand bemerkt.
 
-**Mitnehmen** wird auf dem *kochenden* Slot eingetragen: „Montag Abend, 2 zu Hause + 1
-mitnehmen“ heißt, dass Montagabend drei Portionen entstehen und eine davon Dienstag ins
-Büro geht.
+**Mitnehmen** wird bei der Mahlzeit eingetragen, die *unterwegs gegessen* wird, und
+verlangt ein mitnehmbares Gericht. Standard ist *vorgekocht*: „Dienstag Mittag, 1
+mitnehmen“ füllt der Planer bevorzugt mit Resten vom Vorabend. Auf *frisch* gestellt wird
+in dieser Mahlzeit gekocht – „Montag Abend, 1 zu Hause + 1 mitnehmen (frisch)“ für das
+Abendessen, das zu einem Termin mitgeht; Reste kommen dort nicht in Frage.
 
 ---
 
 ## Tests
 
 ```bash
-cd backend && uv run pytest -m "not live"     # 208 Tests: Domäne, API, Verträge
-cd frontend && npm test                        # 23 Tests: Wochen-Arithmetik, Formatierung
+cd backend && uv run pytest -m "not live"     # 286 Tests: Domäne, API, Verträge
+cd frontend && npm test                        # 25 Tests: Wochen-Arithmetik, Formatierung
 ```
 
 | Ebene | Was sie absichert |

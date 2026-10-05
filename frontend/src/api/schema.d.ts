@@ -31,7 +31,7 @@ export interface paths {
         };
         /**
          * Suggest
-         * @description Fuzzy-Suche für die Zutaten-Combobox (ARCHITECTURE.md §7).
+         * @description Namenssuche für die Zutaten-Combobox: erst Präfix, dann Teilstring.
          */
         get: operations["suggest_api_articles_suggest_get"];
         put?: never;
@@ -370,6 +370,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/weeks/{iso}/slots/{day}/{meal}/cancelled": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Cancelled
+         * @description Gericht ausgefallen (oder doch gekocht) - zählt dann nicht für die Abwechslung.
+         */
+        put: operations["set_cancelled_api_weeks__iso__slots__day___meal__cancelled_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/weeks/{iso}/assignments": {
         parameters: {
             query?: never;
@@ -658,12 +678,12 @@ export interface components {
             aliases?: string[];
             /** Kcal */
             kcal?: number | string | null;
-            /** Protein G */
-            protein_g?: number | string | null;
             /** Carbs G */
             carbs_g?: number | string | null;
             /** Fat G */
             fat_g?: number | string | null;
+            /** Protein G */
+            protein_g?: number | string | null;
         };
         /** ArticleOut */
         ArticleOut: {
@@ -684,12 +704,12 @@ export interface components {
             aliases?: string[];
             /** Kcal */
             kcal?: string | null;
-            /** Protein G */
-            protein_g?: string | null;
             /** Carbs G */
             carbs_g?: string | null;
             /** Fat G */
             fat_g?: string | null;
+            /** Protein G */
+            protein_g?: string | null;
             /**
              * Nutrition Basis
              * @default
@@ -713,23 +733,23 @@ export interface components {
             aliases?: string[] | null;
             /** Kcal */
             kcal?: number | string | null;
-            /** Protein G */
-            protein_g?: number | string | null;
             /** Carbs G */
             carbs_g?: number | string | null;
             /** Fat G */
             fat_g?: number | string | null;
+            /** Protein G */
+            protein_g?: number | string | null;
         };
         /** ArticleSuggestion */
         ArticleSuggestion: {
             article: components["schemas"]["ArticleOut"];
-            /** Score */
-            score: number;
             /**
              * Kind
              * @default FUZZY
              */
             kind: string;
+            /** Score */
+            score?: number | null;
             /** Matched Name */
             matched_name?: string | null;
         };
@@ -739,10 +759,10 @@ export interface components {
             /** Dish Id */
             dish_id?: number | null;
             /**
-             * Doubled
-             * @default false
+             * Factor
+             * @default 1
              */
-            doubled: boolean;
+            factor: number;
             /** Leftover Source Day */
             leftover_source_day?: number | null;
             leftover_source_meal?: components["schemas"]["Meal"] | null;
@@ -764,10 +784,10 @@ export interface components {
             /** Dish Name */
             dish_name?: string | null;
             /**
-             * Doubled
-             * @default false
+             * Factor
+             * @default 1
              */
-            doubled: boolean;
+            factor: number;
             /** Portions */
             portions?: number | null;
             /** Leftover Source Day */
@@ -778,6 +798,16 @@ export interface components {
             /** Portions Used */
             portions_used?: number | null;
             score?: components["schemas"]["ScoreOut"] | null;
+            /**
+             * Cancelled
+             * @default false
+             */
+            cancelled: boolean;
+        };
+        /** CancelIn */
+        CancelIn: {
+            /** Cancelled */
+            cancelled: boolean;
         };
         /** CandidateOut */
         CandidateOut: {
@@ -861,6 +891,16 @@ export interface components {
              * @default true
              */
             packable: boolean;
+            /**
+             * Allow Double
+             * @default true
+             */
+            allow_double: boolean;
+            /**
+             * Allow Triple
+             * @default false
+             */
+            allow_triple: boolean;
             /** @default NORMAL */
             effort: components["schemas"]["Effort"];
             /** @default BOTH */
@@ -916,8 +956,12 @@ export interface components {
             note: string | null;
             /** Archived */
             archived: boolean;
-            /** Can Double */
-            can_double: boolean;
+            /** Allow Double */
+            allow_double: boolean;
+            /** Allow Triple */
+            allow_triple: boolean;
+            /** Factors */
+            factors: number[];
             /** Categories */
             categories: components["schemas"]["CategoryOut"][];
             /** Ingredients */
@@ -936,6 +980,10 @@ export interface components {
             portions?: number | null;
             /** Packable */
             packable?: boolean | null;
+            /** Allow Double */
+            allow_double?: boolean | null;
+            /** Allow Triple */
+            allow_triple?: boolean | null;
             effort?: components["schemas"]["Effort"] | null;
             suitable_for?: components["schemas"]["SuitableFor"] | null;
             /** Rating */
@@ -961,6 +1009,12 @@ export interface components {
             portions: number;
             /** Packable */
             packable: boolean;
+            /** Allow Double */
+            allow_double: boolean;
+            /** Allow Triple */
+            allow_triple: boolean;
+            /** Factors */
+            factors: number[];
             effort: components["schemas"]["Effort"];
             suitable_for: components["schemas"]["SuitableFor"];
             /** Rating */
@@ -977,10 +1031,11 @@ export interface components {
         };
         /**
          * Effort
-         * @description Aufwand eines Gerichts (general_plan.md §3).
+         * @description Aufwand eines Gerichts (general_plan.md §3). Zwei Stufen reichen: passt es in einen
+         *     Tag mit wenig Zeit oder nicht. "aufwendig" hat im Alltag nichts unterschieden.
          * @enum {string}
          */
-        Effort: "QUICK" | "NORMAL" | "ELABORATE";
+        Effort: "QUICK" | "NORMAL";
         /** GridIn */
         GridIn: {
             /** Slots */
@@ -1065,12 +1120,12 @@ export interface components {
         NutrientsOut: {
             /** Kcal */
             kcal: string;
-            /** Protein G */
-            protein_g: string;
             /** Carbs G */
             carbs_g: string;
             /** Fat G */
             fat_g: string;
+            /** Protein G */
+            protein_g: string;
         };
         /** NutritionPreviewIn */
         NutritionPreviewIn: {
@@ -1275,6 +1330,11 @@ export interface components {
             eaters_home: number;
             /** Packed Portions */
             packed_portions: number;
+            /**
+             * Packed Fresh
+             * @default false
+             */
+            packed_fresh: boolean;
             time_budget: components["schemas"]["TimeBudget"];
             /** @default NONE */
             special: components["schemas"]["SlotSpecial"];
@@ -1298,6 +1358,8 @@ export interface components {
             eaters_home: number;
             /** Packed Portions */
             packed_portions: number;
+            /** Packed Fresh */
+            packed_fresh: boolean;
             time_budget: components["schemas"]["TimeBudget"];
             special: components["schemas"]["SlotSpecial"];
             /** Pinned */
@@ -1348,10 +1410,10 @@ export interface components {
         SyncStatus: "OK" | "FAILED" | "PARTIAL";
         /**
          * TimeBudget
-         * @description Zeitbudget eines Slots. `NONE` heisst: heute wird nicht gekocht.
+         * @description Zeit für eine Mahlzeit. Bei `LITTLE` kommen nur schnelle Gerichte oder Reste.
          * @enum {string}
          */
-        TimeBudget: "PLENTY" | "LITTLE" | "NONE";
+        TimeBudget: "NORMAL" | "LITTLE";
         /**
          * Unit
          * @enum {string}
@@ -2249,6 +2311,43 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["PinIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WeekOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_cancelled_api_weeks__iso__slots__day___meal__cancelled_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                iso: string;
+                day: number;
+                meal: components["schemas"]["Meal"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CancelIn"];
             };
         };
         responses: {

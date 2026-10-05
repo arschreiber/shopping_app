@@ -37,18 +37,10 @@ router = APIRouter(prefix="/api", tags=["dishes"])
 
 
 def _history(session) -> tuple[dict[int, int], dict[int, date]]:
-    ages = mappers.cooked_weeks_ago(session, date.today())
-    from sqlalchemy import select
-
-    from ...db import models as m
-
-    rows = session.execute(
-        select(m.CookLog.dish_id, m.CookLog.cooked_at).where(m.CookLog.confirmed.is_(True))
-    ).all()
-    last: dict[int, date] = {}
-    for dish_id, cooked_at in rows:
-        if dish_id not in last or cooked_at > last[dish_id]:
-            last[dish_id] = cooked_at
+    """Wochen seit dem letzten Kochen und das Datum dazu - bis einschließlich heute."""
+    today = date.today()
+    last = mappers.last_cooked(session, through=today)
+    ages = {dish_id: mappers.calendar_weeks_ago(day, today) for dish_id, day in last.items()}
     return ages, last
 
 
@@ -76,6 +68,8 @@ def create_dish(session: SessionDep, payload: DishIn) -> DishOut:
         name=payload.name,
         portions=payload.portions,
         packable=payload.packable,
+        allow_double=payload.allow_double,
+        allow_triple=payload.allow_triple,
         effort=payload.effort,
         suitable_for=payload.suitable_for,
         rating=payload.rating,

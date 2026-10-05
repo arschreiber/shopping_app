@@ -11,6 +11,8 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+import pytest
+
 from conftest import full_week, slot, snapshot
 from mealplan.domain.diagnostics import diagnose
 from mealplan.domain.enums import AssignmentKind, Meal, SlotSpecial, TimeBudget
@@ -56,10 +58,12 @@ def test_golden_week(big_pool):
     assert rendered == GOLDEN.read_text(encoding="utf-8")
 
 
-def test_the_office_week_is_actually_solved(big_pool):
-    """Nicht nur stabil, sondern richtig: Mitnehm-Bedarf gedeckt, kein Slot leer."""
+@pytest.mark.parametrize("seed", [SEED, *range(1, 25)])
+def test_the_office_week_is_actually_solved(big_pool, seed):
+    """Nicht nur stabil, sondern richtig: Mitnehm-Bedarf gedeckt, kein Slot leer - bei
+    jedem Zufallswert, denn jeder Klick auf "Woche vorschlagen" zieht einen neuen."""
     snap = realistic_week(big_pool)
-    plan = propose(snap, seed=SEED)
+    plan = propose(snap, seed=seed)
 
     for s in snap.slots:
         assignment = plan.get(s.key)
@@ -75,4 +79,4 @@ def test_the_office_week_is_actually_solved(big_pool):
         if s.packed_portions > 0:
             dish = snap.dish(assignment.dish_id)
             assert dish.packable, f"{s.key}: {dish.name} ist nicht mitnehmbar"
-            assert dish.portions_for(doubled=assignment.doubled) >= s.demand
+            assert dish.portions_for(assignment.factor) >= s.demand

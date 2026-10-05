@@ -4,28 +4,27 @@ import type { Effort, Meal, SlotSpecial, SuitableFor, TimeBudget, Unit } from ".
 export const MEAL_LABEL: Record<Meal, string> = { LUNCH: "Mittag", DINNER: "Abend" };
 
 export const EFFORT_LABEL: Record<Effort, string> = {
-  QUICK: "schnell",
   NORMAL: "normal",
-  ELABORATE: "aufwendig",
+  QUICK: "schnell",
 };
 
 export const EFFORT_HINT: Record<Effort, string> = {
-  QUICK: "unter 20 Minuten",
-  NORMAL: "normaler Aufwand",
-  ELABORATE: "aufwendig",
+  NORMAL: "braucht normale Zeit",
+  QUICK: "unter 20 Minuten - passt auch an Tagen mit wenig Zeit",
 };
 
 export const TIME_LABEL: Record<TimeBudget, string> = {
-  PLENTY: "viel Zeit",
+  NORMAL: "normale Zeit",
   LITTLE: "wenig Zeit",
-  NONE: "keine Zeit",
 };
 
 export const TIME_SHORT: Record<TimeBudget, string> = {
-  PLENTY: "viel",
+  NORMAL: "normal",
   LITTLE: "wenig",
-  NONE: "keine",
 };
+
+/** Wie oft ein Gericht auf einmal gekocht wird - dieselben Wörter wie im Planer. */
+export const FACTOR_WORD: Record<number, string> = { 2: "doppelt", 3: "dreifach" };
 
 export const SPECIAL_LABEL: Record<SlotSpecial, string> = {
   NONE: "normal",

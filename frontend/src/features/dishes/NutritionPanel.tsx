@@ -74,9 +74,9 @@ export function NutritionPanel({
       <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1">
         <span className="label">je Portion</span>
         <Figure value={data.per_portion.kcal} unit="kcal" strong />
-        <Figure value={data.per_portion.protein_g} unit="g" label="Eiweiß" />
         <Figure value={data.per_portion.carbs_g} unit="g" label="Kohlenhydrate" />
         <Figure value={data.per_portion.fat_g} unit="g" label="Fett" />
+        <Figure value={data.per_portion.protein_g} unit="g" label="Eiweiß" />
         <span className="ml-auto text-2xs text-ink-faint">
           gesamt {formatNumber(data.total.kcal)} kcal
         </span>

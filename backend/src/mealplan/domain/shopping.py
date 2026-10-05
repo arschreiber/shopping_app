@@ -47,11 +47,10 @@ def build_shopping_list(
             continue
         if not _counts(key, snap):
             continue
-        factor = 2 if assignment.doubled else 1
         for ingredient in ingredients.get(assignment.dish_id, []):
             unit = article_units.get(ingredient.article_id, ingredient.unit)
             quantity = Quantity(ingredient.quantity, ingredient.unit).to(unit)
-            collected[ingredient.article_id].append(quantity.scaled(factor))
+            collected[ingredient.article_id].append(quantity.scaled(assignment.factor))
             if assignment.dish_id not in origins[ingredient.article_id]:
                 origins[ingredient.article_id].append(assignment.dish_id)
 
@@ -90,7 +89,7 @@ def portions_cooked(plan: Plan, snap: PlanningSnapshot) -> int:
     for _key, assignment in plan.items():
         if assignment.cooks and assignment.dish_id is not None:
             dish = snap.dish(assignment.dish_id)
-            total += dish.portions_for(doubled=assignment.doubled)
+            total += dish.portions_for(assignment.factor)
     return total
 
 

@@ -11,7 +11,6 @@ from __future__ import annotations
 from decimal import Decimal
 
 from .enums import CategoryAxis as Axis
-from .enums import Effort, TimeBudget
 from .leftovers import LeftoverPool, PortionLedger
 from .model import (
     Contribution,
@@ -39,7 +38,7 @@ def score(
     plan: Plan,
     snap: PlanningSnapshot,
     *,
-    doubled: bool = False,
+    factor: int = 1,
     ledger: PortionLedger | None = None,
 ) -> ScoreBreakdown:
     w = snap.weights
@@ -50,10 +49,11 @@ def score(
     out.extend(_rotation(dish, w))
     out.extend(_rating(dish, w))
     out.extend(_offers(dish, w))
-    out.extend(_portions(dish, slot, snap, doubled=doubled, ledger=ledger))
-    out.extend(_effort(dish, slot, w))
+    out.extend(_portions(dish, slot, snap, factor=factor, ledger=ledger))
 
-    if doubled:
+    # Mehraufwand ist nur der große Topf. Ein 1-Portionen-Rezept doppelt zu kochen ist
+    # sein normaler Gebrauch - bestraft, würde es gegen jedes 2er-Gericht verlieren.
+    if factor > 1 and dish.portions > 1:
         out.append(Contribution("doubling", w.doubling, "verdoppelt (Mehraufwand)"))
 
     return ScoreBreakdown.of(out)
@@ -193,11 +193,11 @@ def _portions(
     slot: SlotSpec,
     snap: PlanningSnapshot,
     *,
-    doubled: bool,
+    factor: int,
     ledger: PortionLedger,
 ) -> list[Contribution]:
     w = snap.weights
-    produced = dish.portions_for(doubled=doubled)
+    produced = dish.portions_for(factor)
     surplus = produced - slot.demand
     if surplus == 0:
         return [
@@ -229,16 +229,6 @@ def _portions(
             )
         )
     return out
-
-
-def _effort(dish: DishSpec, slot: SlotSpec, w) -> list[Contribution]:
-    if slot.time_budget is TimeBudget.LITTLE and dish.effort is Effort.QUICK:
-        return [
-            Contribution("quick_fit", w.quick_when_little_time, "schnell, passt zu wenig Zeit")
-        ]
-    if slot.time_budget is TimeBudget.PLENTY and dish.effort is Effort.ELABORATE:
-        return [Contribution("effort_slack", w.effort_slack, "aufwendig, aber Zeit ist da")]
-    return []
 
 
 def offer_savings(dish: DishSpec) -> Decimal:

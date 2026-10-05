@@ -75,14 +75,15 @@ def test_propose_fills_the_week_with_reasons(client, seeded):
     )
 
 
-def test_propose_is_reproducible(client, seeded):
-    first = client.post(f"/api/weeks/{ISO}/propose", json={}).json()
-    client.delete(f"/api/weeks/{ISO}/assignments", params={"keep_pinned": False})
-    second = client.post(f"/api/weeks/{ISO}/propose", json={}).json()
-    names = lambda week: [  # noqa: E731
-        (s["day"], s["meal"], (s["assignment"] or {}).get("dish_name")) for s in week["slots"]
-    ]
-    assert names(first) == names(second)
+def test_each_proposal_draws_a_new_plan(client, seeded):
+    """Gleiches Raster, neuer Klick: ein neuer Plan - sonst kommt immer dasselbe raus."""
+    plans = []
+    for _ in range(3):
+        week = client.post(f"/api/weeks/{ISO}/propose", json={}).json()
+        plans.append(
+            tuple((s["day"], (s["assignment"] or {}).get("dish_name")) for s in week["slots"])
+        )
+    assert len(set(plans)) > 1
 
 
 def test_pins_survive_a_new_proposal(client, seeded):
@@ -155,6 +156,29 @@ def test_assignment_rejects_too_few_portions(client, seeded):
     assert "reichen nicht" in response.json()["detail"]
 
 
+
+def test_a_single_portion_dish_is_assigned_with_its_factor(client):
+    """Ein Burger-Rezept für eine Person, doppelt gekocht für die zwei zu Hause."""
+    burger = client.post(
+        "/api/dishes", json={"name": "Burger", "portions": 1, "allow_double": True}
+    ).json()
+    assert burger["factors"] == [1, 2]
+
+    week = client.put(
+        f"/api/weeks/{ISO}/slots/2/DINNER/assignment",
+        json={"kind": "DISH", "dish_id": burger["id"], "factor": 2},
+    ).json()
+    slot = next(s for s in week["slots"] if s["day"] == 2 and s["meal"] == "DINNER")
+    assert slot["assignment"]["factor"] == 2
+    assert slot["assignment"]["portions"] == 2
+
+    tripled = client.put(
+        f"/api/weeks/{ISO}/slots/3/DINNER/assignment",
+        json={"kind": "DISH", "dish_id": burger["id"], "factor": 3},
+    )
+    assert tripled.status_code == 422
+    assert "verdreifachen ist bei diesem Gericht nicht vorgesehen" in tripled.json()["detail"]
+
 def test_reroll_changes_one_slot(client, seeded):
     """Ein belegter Slot, freier Pool: würfeln liefert etwas anderes."""
     dish = client.get("/api/dishes").json()[0]
@@ -199,6 +223,117 @@ def test_copy_from_takes_the_grid_but_not_the_plan(client, seeded):
     assert by_key[(0, "DINNER")]["packed_portions"] == 1
     assert all(s["assignment"] is None for s in target["slots"])
 
+
+def test_fresh_take_along_survives_saving_and_copying(client):
+    week = client.get(f"/api/weeks/{ISO}").json()
+    saved = client.put(
+        f"/api/weeks/{ISO}/grid",
+        json=grid_payload(
+            week,
+            **{
+                "0D": {"eaters_home": 1, "packed_portions": 1, "packed_fresh": True},
+                "1D": {"packed_portions": 0, "packed_fresh": True},  # nichts mitzunehmen
+            },
+        ),
+    ).json()
+    by_key = {(s["day"], s["meal"]): s for s in saved["slots"]}
+    assert by_key[(0, "DINNER")]["packed_fresh"] is True
+    assert by_key[(1, "DINNER")]["packed_fresh"] is False
+
+    copied = client.post(f"/api/weeks/2026-W38/copy-from/{ISO}").json()
+    by_key = {(s["day"], s["meal"]): s for s in copied["slots"]}
+    assert by_key[(0, "DINNER")]["packed_fresh"] is True
+
+
+def test_leftovers_are_refused_where_food_is_cooked_fresh(client, seeded):
+    three = next(
+        d for d in client.get("/api/dishes").json() if d["portions"] == 3 and d["packable"]
+    )
+    client.put(
+        f"/api/weeks/{ISO}/slots/0/DINNER/assignment",
+        json={"kind": "DISH", "dish_id": three["id"]},
+    )  # 3 Portionen für 2 Esser: eine bleibt übrig
+    leftover = {
+        "kind": "LEFTOVER",
+        "dish_id": three["id"],
+        "leftover_source_day": 0,
+        "leftover_source_meal": "DINNER",
+        "portions_used": 1,
+    }
+
+    def tuesday_lunch(fresh: bool) -> int:
+        week = client.get(f"/api/weeks/{ISO}").json()
+        client.put(
+            f"/api/weeks/{ISO}/grid",
+            json=grid_payload(
+                week, **{"1L": {"eaters_home": 0, "packed_portions": 1, "packed_fresh": fresh}}
+            ),
+        )
+        return client.put(f"/api/weeks/{ISO}/slots/1/LUNCH/assignment", json=leftover)
+
+    refused = tuesday_lunch(fresh=True)
+    assert refused.status_code == 422
+    assert "frisch" in refused.json()["detail"]
+    assert tuesday_lunch(fresh=False).status_code == 200  # vorgekocht: Reste sind recht
+
+
+def test_eating_out_is_stored_as_nobody_home(client):
+    """"auswärts" und "niemand da" sind dasselbe - auch für einen alten Client."""
+    week = client.get(f"/api/weeks/{ISO}").json()
+    saved = client.put(
+        f"/api/weeks/{ISO}/grid",
+        json=grid_payload(week, **{"2D": {"special": "EATING_OUT", "eaters_home": 2}}),
+    ).json()
+    slot = next(s for s in saved["slots"] if s["day"] == 2 and s["meal"] == "DINNER")
+    assert (slot["special"], slot["eaters_home"], slot["packed_portions"]) == ("NONE", 0, 0)
+
+
+def test_nobody_home_takes_the_dish_and_its_leftovers_off_the_plan(client, seeded):
+    """Stand das Gericht weiter hinter der "niemand da"-Karte, landeten seine Zutaten
+    trotzdem auf der Einkaufsliste."""
+    three = next(
+        d for d in client.get("/api/dishes").json() if d["portions"] == 3 and d["packable"]
+    )
+    week = client.get(f"/api/weeks/{ISO}").json()
+    client.put(
+        f"/api/weeks/{ISO}/grid", json=grid_payload(week, **{"1L": {"eaters_home": 1}})
+    )
+    client.put(
+        f"/api/weeks/{ISO}/slots/0/DINNER/assignment",
+        json={"kind": "DISH", "dish_id": three["id"]},
+    )
+    planned = client.put(
+        f"/api/weeks/{ISO}/slots/1/LUNCH/assignment",
+        json={
+            "kind": "LEFTOVER",
+            "dish_id": three["id"],
+            "leftover_source_day": 0,
+            "leftover_source_meal": "DINNER",
+            "portions_used": 1,
+        },
+    ).json()
+    assert client.get(f"/api/weeks/{ISO}/shopping-list").json()["items"]
+
+    after = client.put(
+        f"/api/weeks/{ISO}/grid",
+        json=grid_payload(planned, **{"0D": {"eaters_home": 0, "packed_portions": 0}}),
+    ).json()
+    assert all(s["assignment"] is None for s in after["slots"])
+    assert client.get(f"/api/weeks/{ISO}/shopping-list").json()["items"] == []
+
+
+def test_nothing_can_be_planned_where_nobody_eats(client, seeded):
+    week = client.get(f"/api/weeks/{ISO}").json()
+    client.put(
+        f"/api/weeks/{ISO}/grid", json=grid_payload(week, **{"2D": {"eaters_home": 0}})
+    )
+    dish = client.get("/api/dishes").json()[0]
+    response = client.put(
+        f"/api/weeks/{ISO}/slots/2/DINNER/assignment",
+        json={"kind": "DISH", "dish_id": dish["id"]},
+    )
+    assert response.status_code == 422
+    assert "niemand" in response.json()["detail"]
 
 def test_diagnostics_report_the_open_slots(client, seeded):
     """Erst ab dem ersten belegten Slot sind Lücken eine Warnung."""

@@ -9,8 +9,10 @@ import { NutritionPanel } from "./NutritionPanel";
 
 export type DishDraft = {
   name: string;
-  portions: 2 | 3;
+  portions: Portions;
   packable: boolean;
+  allow_double: boolean;
+  allow_triple: boolean;
   effort: Effort;
   suitable_for: SuitableFor;
   rating: number | null;
@@ -20,11 +22,36 @@ export type DishDraft = {
   categories: CategoryChoice[];
 };
 
+type Portions = 1 | 2 | 3;
+
+const PORTION_OPTIONS = [
+  { value: "1", label: "1", title: "1 Portion – doppelt oder dreifach kochbar" },
+  { value: "2", label: "2", title: "2 Portionen – verdoppelbar auf 4" },
+  { value: "3", label: "3", title: "3 Portionen" },
+];
+
+function toPortions(value: number | string): Portions {
+  const n = Number(value);
+  return n === 1 || n === 2 ? n : 3;
+}
+
+/** "als 1, 2 oder 3 Portionen" - so oft lässt sich das Gericht auf einmal kochen. */
+function sizesHint(draft: DishDraft): string | null {
+  if (draft.portions === 2) return draft.allow_double ? "verdoppelbar auf 4" : null;
+  if (draft.portions === 3) return null;
+  const sizes = [1, ...(draft.allow_double ? [2] : []), ...(draft.allow_triple ? [3] : [])];
+  if (sizes.length === 1) return null;
+  const last = sizes.pop();
+  return `als ${sizes.join(", ")} oder ${last} Portionen`;
+}
+
 export function emptyDraft(): DishDraft {
   return {
     name: "",
     portions: 3,
     packable: true,
+    allow_double: true,
+    allow_triple: false,
     effort: "NORMAL",
     suitable_for: "BOTH",
     rating: null,
@@ -38,8 +65,10 @@ export function emptyDraft(): DishDraft {
 export function draftFromDish(dish: Dish): DishDraft {
   return {
     name: dish.name,
-    portions: dish.portions === 2 ? 2 : 3,
+    portions: toPortions(dish.portions),
     packable: dish.packable,
+    allow_double: dish.allow_double,
+    allow_triple: dish.allow_triple,
     effort: dish.effort,
     suitable_for: dish.suitable_for,
     rating: dish.rating,
@@ -113,14 +142,11 @@ export function DishForm({
           <Segmented
             label="Portionen"
             value={String(draft.portions)}
-            options={[
-              { value: "2", label: "2", title: "2 Portionen – verdoppelbar auf 4" },
-              { value: "3", label: "3", title: "3 Portionen" },
-            ]}
-            onChange={(value) => patch({ portions: value === "2" ? 2 : 3 })}
+            options={PORTION_OPTIONS}
+            onChange={(value) => patch({ portions: toPortions(value) })}
           />
-          {draft.portions === 2 && (
-            <p className="mt-1 text-2xs text-ink-faint">verdoppelbar auf 4</p>
+          {sizesHint(draft) && (
+            <p className="mt-1 text-2xs text-ink-faint">{sizesHint(draft)}</p>
           )}
         </div>
 
@@ -129,7 +155,7 @@ export function DishForm({
           <Segmented
             label="Aufwand"
             value={draft.effort}
-            options={(["QUICK", "NORMAL", "ELABORATE"] as Effort[]).map((effort) => ({
+            options={(["NORMAL", "QUICK"] as Effort[]).map((effort) => ({
               value: effort,
               label: EFFORT_LABEL[effort],
               title: EFFORT_HINT[effort],
@@ -151,12 +177,28 @@ export function DishForm({
           />
         </div>
 
-        <div className="pb-1">
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 pb-1">
           <Toggle
             checked={draft.packable}
             onChange={(packable) => patch({ packable })}
             label="mitnehmbar"
           />
+          {/* 3er-Gerichte werden nie vervielfacht; bei 1 Portion sind doppelt *und*
+              dreifach wählbar. Die gespeicherten Werte bleiben beim Wechsel erhalten. */}
+          {draft.portions !== 3 && (
+            <Toggle
+              checked={draft.allow_double}
+              onChange={(allow_double) => patch({ allow_double })}
+              label="doppelt möglich"
+            />
+          )}
+          {draft.portions === 1 && (
+            <Toggle
+              checked={draft.allow_triple}
+              onChange={(allow_triple) => patch({ allow_triple })}
+              label="dreifach möglich"
+            />
+          )}
         </div>
 
         <div className="pb-0.5">

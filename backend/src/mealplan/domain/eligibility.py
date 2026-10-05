@@ -11,20 +11,17 @@ from .model import DishSpec, Eligibility, Plan, SlotSpec
 
 # Welcher Aufwand passt in welches Zeitbudget?
 _EFFORT_FITS: dict[TimeBudget, frozenset[Effort]] = {
-    TimeBudget.PLENTY: frozenset({Effort.QUICK, Effort.NORMAL, Effort.ELABORATE}),
+    TimeBudget.NORMAL: frozenset({Effort.QUICK, Effort.NORMAL}),
     TimeBudget.LITTLE: frozenset({Effort.QUICK}),
-    TimeBudget.NONE: frozenset(),
 }
 
 _EFFORT_LABEL = {
     Effort.QUICK: "schnell",
     Effort.NORMAL: "normal",
-    Effort.ELABORATE: "aufwendig",
 }
 _BUDGET_LABEL = {
-    TimeBudget.PLENTY: "viel Zeit",
+    TimeBudget.NORMAL: "normale Zeit",
     TimeBudget.LITTLE: "wenig Zeit",
-    TimeBudget.NONE: "keine Zeit",
 }
 
 
@@ -33,7 +30,7 @@ def eligible(
     slot: SlotSpec,
     plan: Plan,
     *,
-    doubled: bool = False,
+    factor: int = 1,
 ) -> Eligibility:
     reasons: list[str] = []
 
@@ -55,10 +52,10 @@ def eligible(
     if slot.packed_portions > 0 and not dish.packable:
         reasons.append("nicht mitnehmbar, Slot braucht Mitnehm-Portionen")
 
-    if doubled and not dish.can_double:
-        reasons.append("nur 2-Portionen-Gerichte sind verdoppelbar")
+    if factor not in dish.factors:
+        reasons.append(factor_reason(dish, factor))
 
-    available = dish.portions_for(doubled=doubled)
+    available = dish.portions_for(factor)
     if available < slot.demand:
         reasons.append(
             f"{available} Portionen reichen nicht für {slot.demand} "
@@ -66,10 +63,21 @@ def eligible(
         )
 
     # Ein Gericht pro Woche nur einmal kochen. Wiederholung läuft ueber Reste oder
-    # Verdoppeln, nicht ueber zweimaliges Kochen.
+    # Vervielfachen, nicht ueber zweimaliges Kochen.
     for key, assignment in plan.assignments.items():
         if key != slot.key and assignment.cooks and assignment.dish_id == dish.id:
             reasons.append("diese Woche schon eingeplant")
             break
 
     return Eligibility.no(*reasons) if reasons else Eligibility.yes()
+
+
+
+def factor_reason(dish: DishSpec, factor: int) -> str:
+    """Warum dieses Gericht nicht so oft auf einmal gekocht wird."""
+    if dish.portions == 3:
+        return "3-Portionen-Gerichte werden nicht vervielfacht"
+    if dish.portions == 2 and factor > 2:
+        return "2-Portionen-Gerichte werden höchstens verdoppelt"
+    verb = {2: "verdoppeln", 3: "verdreifachen"}.get(factor, f"{factor}-fach kochen")
+    return f"{verb} ist bei diesem Gericht nicht vorgesehen"

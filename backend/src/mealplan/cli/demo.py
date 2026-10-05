@@ -19,6 +19,8 @@ from ..services.ingredient_parsing import parse_lines
 
 # (Name, Einheit, Grundvorrat?, Bring!-Katalogname, Nährwerte)
 #
+# Nährwerte = (kcal, Kohlenhydrate, Fett, Eiweiß) - dieselbe Reihenfolge wie in der App.
+#
 # Die Nährwerte beziehen sich auf die kanonische Einheit: je 100 g, je 100 ml oder je
 # Stück. Es sind Hausnummern zum Ausprobieren, keine Laborwerte - beim eigenen Korpus
 # stehen die Angaben auf der Packung.
@@ -27,35 +29,35 @@ from ..services.ingredient_parsing import parse_lines
 # und eine Prise trägt nichts bei. Dadurch gelten Gerichte mit ihnen trotzdem als
 # vollständig gerechnet.
 ARTICLES: list[tuple[str, Unit, bool, str | None, tuple[float, float, float, float] | None]] = [
-    ("Basmatireis", Unit.G, False, "Reis", (350, 7, 78, 1)),
-    ("Nudeln", Unit.G, False, "Nudeln", (360, 12, 71, 1.5)),
-    ("Kartoffeln", Unit.G, False, "Kartoffeln", (77, 2, 17, 0.1)),
-    ("Hirtenkäse", Unit.G, False, "Feta", (250, 14, 4, 21)),
-    ("Lachsfilet", Unit.G, False, "Lachs", (200, 20, 0, 13)),
-    ("Hähnchenbrust", Unit.G, False, "Hähnchenbrust", (105, 23, 0, 1.5)),
-    ("Rinderhackfleisch", Unit.G, False, "Hackfleisch", (250, 19, 0, 19)),
-    ("Rote Linsen", Unit.G, False, "Linsen", (350, 24, 52, 2)),
-    ("Kichererbsen", Unit.STUECK, False, "Kichererbsen", (290, 17, 40, 5)),
-    ("Zucchini", Unit.STUECK, False, "Zucchini", (45, 3, 6, 0.8)),
-    ("Paprika", Unit.STUECK, False, "Paprika", (30, 1.5, 5, 0.4)),
-    ("Zwiebeln", Unit.STUECK, False, "Zwiebeln", (40, 1.2, 8, 0.2)),
-    ("Knoblauch", Unit.STUECK, False, "Knoblauch", (5, 0.2, 1, 0)),
-    ("Tomaten", Unit.G, False, "Tomaten", (18, 0.9, 3.5, 0.2)),
-    ("Passierte Tomaten", Unit.ML, False, "Passierte Tomaten", (30, 1.4, 5, 0.2)),
-    ("Kokosmilch", Unit.ML, False, "Kokosmilch", (190, 2, 3, 19)),
-    ("Sahne", Unit.ML, False, "Sahne", (290, 2.4, 3.2, 30)),
-    ("Reibekäse", Unit.G, False, "Käse", (350, 25, 1, 28)),
-    ("Brokkoli", Unit.STUECK, False, "Brokkoli", (170, 14, 15, 2)),
-    ("Süßkartoffeln", Unit.G, False, "Süßkartoffeln", (86, 1.6, 20, 0.1)),
-    ("Baguette", Unit.STUECK, False, "Baguette", (650, 22, 130, 3)),
-    ("Eier", Unit.STUECK, False, "Eier", (78, 6.5, 0.6, 5.3)),
-    ("Spinat", Unit.G, False, "Spinat", (23, 2.9, 1.4, 0.4)),
-    ("Feta", Unit.G, False, "Feta", (260, 14, 4, 21)),
-    ("Olivenöl", Unit.ML, True, "Olivenöl", (830, 0, 0, 92)),
+    ("Basmatireis", Unit.G, False, "Reis", (350, 78, 1, 7)),
+    ("Nudeln", Unit.G, False, "Nudeln", (360, 71, 1.5, 12)),
+    ("Kartoffeln", Unit.G, False, "Kartoffeln", (77, 17, 0.1, 2)),
+    ("Hirtenkäse", Unit.G, False, "Feta", (250, 4, 21, 14)),
+    ("Lachsfilet", Unit.G, False, "Lachs", (200, 0, 13, 20)),
+    ("Hähnchenbrust", Unit.G, False, "Hähnchenbrust", (105, 0, 1.5, 23)),
+    ("Rinderhackfleisch", Unit.G, False, "Hackfleisch", (250, 0, 19, 19)),
+    ("Rote Linsen", Unit.G, False, "Linsen", (350, 52, 2, 24)),
+    ("Kichererbsen", Unit.STUECK, False, "Kichererbsen", (290, 40, 5, 17)),
+    ("Zucchini", Unit.STUECK, False, "Zucchini", (45, 6, 0.8, 3)),
+    ("Paprika", Unit.STUECK, False, "Paprika", (30, 5, 0.4, 1.5)),
+    ("Zwiebeln", Unit.STUECK, False, "Zwiebeln", (40, 8, 0.2, 1.2)),
+    ("Knoblauch", Unit.STUECK, False, "Knoblauch", (5, 1, 0, 0.2)),
+    ("Tomaten", Unit.G, False, "Tomaten", (18, 3.5, 0.2, 0.9)),
+    ("Passierte Tomaten", Unit.ML, False, "Passierte Tomaten", (30, 5, 0.2, 1.4)),
+    ("Kokosmilch", Unit.ML, False, "Kokosmilch", (190, 3, 19, 2)),
+    ("Sahne", Unit.ML, False, "Sahne", (290, 3.2, 30, 2.4)),
+    ("Reibekäse", Unit.G, False, "Käse", (350, 1, 28, 25)),
+    ("Brokkoli", Unit.STUECK, False, "Brokkoli", (170, 15, 2, 14)),
+    ("Süßkartoffeln", Unit.G, False, "Süßkartoffeln", (86, 20, 0.1, 1.6)),
+    ("Baguette", Unit.STUECK, False, "Baguette", (650, 130, 3, 22)),
+    ("Eier", Unit.STUECK, False, "Eier", (78, 0.6, 5.3, 6.5)),
+    ("Spinat", Unit.G, False, "Spinat", (23, 1.4, 0.4, 2.9)),
+    ("Feta", Unit.G, False, "Feta", (260, 4, 21, 14)),
+    ("Olivenöl", Unit.ML, True, "Olivenöl", (830, 0, 92, 0)),
     ("Salz", Unit.G, True, "Salz", (0, 0, 0, 0)),
     ("Pfeffer", Unit.G, True, "Pfeffer", (0, 0, 0, 0)),
-    ("Currypulver", Unit.G, True, "Curry", (325, 14, 56, 14)),
-    ("Paprikapulver", Unit.G, True, "Paprikapulver", (280, 14, 54, 13)),
+    ("Currypulver", Unit.G, True, "Curry", (325, 56, 14, 14)),
+    ("Paprikapulver", Unit.G, True, "Paprikapulver", (280, 54, 13, 14)),
     ("Kaffee", Unit.G, False, "Kaffee", (0, 0, 0, 0)),
 ]
 
@@ -91,7 +93,7 @@ DISHES: list[tuple] = [
         "2 EL Olivenöl\nSalz",
     ),
     (
-        "Kartoffelgratin", 2, False, Effort.ELABORATE, SuitableFor.DINNER,
+        "Kartoffelgratin", 2, False, Effort.NORMAL, SuitableFor.DINNER,
         "Kartoffeln", "vegetarisch", None,
         "800 g Kartoffeln\n200 ml Sahne\n150 g Reibekäse\n1 Zehen Knoblauch\nSalz\nPfeffer",
     ),
@@ -156,7 +158,7 @@ def seed(session: Session) -> dict[str, int]:
         values = (
             dict(
                 zip(
-                    ("kcal", "protein_g", "carbs_g", "fat_g"),
+                    ("kcal", "carbs_g", "fat_g", "protein_g"),
                     (Decimal(str(value)) for value in nutrition),
                     strict=True,
                 )

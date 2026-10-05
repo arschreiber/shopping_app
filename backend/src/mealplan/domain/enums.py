@@ -15,19 +15,18 @@ class Meal(StrEnum):
 
 
 class Effort(StrEnum):
-    """Aufwand eines Gerichts (general_plan.md §3)."""
+    """Aufwand eines Gerichts (general_plan.md §3). Zwei Stufen reichen: passt es in einen
+    Tag mit wenig Zeit oder nicht. "aufwendig" hat im Alltag nichts unterschieden."""
 
-    QUICK = "QUICK"  # < 20 min
+    QUICK = "QUICK"  # schnell, < 20 min
     NORMAL = "NORMAL"
-    ELABORATE = "ELABORATE"
 
 
 class TimeBudget(StrEnum):
-    """Zeitbudget eines Slots. `NONE` heisst: heute wird nicht gekocht."""
+    """Zeit für eine Mahlzeit. Bei `LITTLE` kommen nur schnelle Gerichte oder Reste."""
 
-    PLENTY = "PLENTY"
+    NORMAL = "NORMAL"
     LITTLE = "LITTLE"
-    NONE = "NONE"
 
 
 class SuitableFor(StrEnum):

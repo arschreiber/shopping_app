@@ -7,18 +7,24 @@ export function Segmented<T extends string>({
   onChange,
   size = "md",
   label,
+  block = false,
 }: {
   value: T;
   options: { value: T; label: string; title?: string }[];
   onChange: (value: T) => void;
-  size?: "sm" | "md";
+  size?: "xs" | "sm" | "md";
   label?: string;
+  /** Füllt die Breite des Elternteils - für Rasterzellen, die sich die Woche teilen. */
+  block?: boolean;
 }) {
   return (
     <div
       role="group"
       aria-label={label}
-      className="inline-flex overflow-hidden rounded border border-line bg-surface"
+      className={[
+        "overflow-hidden rounded border border-line bg-surface",
+        block ? "flex w-full" : "inline-flex",
+      ].join(" ")}
     >
       {options.map((option, index) => {
         const active = option.value === value;
@@ -31,7 +37,14 @@ export function Segmented<T extends string>({
             onClick={() => onChange(option.value)}
             className={[
               "transition-colors duration-fast",
-              size === "sm" ? "px-2 py-1 text-xs" : "px-2.5 py-1.5 text-sm",
+              size === "xs"
+                ? `${block ? "px-0.5" : "px-1.5"} py-px text-2xs`
+                : size === "sm"
+                  ? "px-2 py-1 text-xs"
+                  : "px-2.5 py-1.5 text-sm",
+              // Breite nach Inhalt, Rest gleich verteilt: "vorgekocht|frisch" passt so in
+              // eine schmale Zelle, wo zwei gleich breite Hälften "frisch" abschneiden.
+              block ? "flex-auto whitespace-nowrap" : "",
               index > 0 ? "border-l border-line" : "",
               active
                 ? "bg-accent-soft font-medium text-accent"

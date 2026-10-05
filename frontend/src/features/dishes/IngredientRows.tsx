@@ -149,8 +149,13 @@ export function IngredientRows({
                 className="field w-24 py-1 text-right"
                 aria-label={`Menge ${row.article_name}`}
               />
+              {/* Einheit und Entfernen bewusst aus der Tab-Folge: beim Erfassen tippt
+                  man Mengen untereinander weg, und die Einheit steht ohnehin schon
+                  richtig da - sie kommt vom Artikel. Mit der Maus bleiben beide normal
+                  bedienbar. */}
               <select
                 value={row.unit}
+                tabIndex={-1}
                 onChange={(event) =>
                   onChange(
                     rows.map((entry, position) =>
@@ -172,6 +177,7 @@ export function IngredientRows({
               <span className="flex-1 truncate text-sm">{row.article_name}</span>
               <button
                 type="button"
+                tabIndex={-1}
                 aria-label={`${row.article_name} entfernen`}
                 onClick={() => onChange(rows.filter((_, position) => position !== index))}
                 className="btn-ghost btn-sm"

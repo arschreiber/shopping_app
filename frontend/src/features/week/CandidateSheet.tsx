@@ -11,7 +11,7 @@ import { IconCheck, IconLeftover, IconWarn } from "../../components/Icons";
 import { Spinner } from "../../components/Primitives";
 import { Sheet } from "../../components/Sheet";
 import { ScoreLines } from "../../components/Warnings";
-import { DAY_NAMES } from "../../lib/dates";
+import { DAY_NAMES, hasArrived } from "../../lib/dates";
 import { MEAL_LABEL, TIME_LABEL, formatScore, pluralPortions } from "../../lib/format";
 
 export function CandidateSheet({
@@ -22,6 +22,7 @@ export function CandidateSheet({
   onClose,
   onChoose,
   onClear,
+  onCancel,
   busy,
 }: {
   open: boolean;
@@ -31,6 +32,8 @@ export function CandidateSheet({
   onClose: () => void;
   onChoose: (candidate: Candidate) => void;
   onClear: () => void;
+  /** Gericht ausgefallen (true) oder doch gekocht (false). */
+  onCancel: (cancelled: boolean) => void;
   busy: boolean;
 }) {
   const [showBlocked, setShowBlocked] = useState(false);
@@ -45,10 +48,16 @@ export function CandidateSheet({
 
   if (!slot) return null;
 
+  // Ausfallen kann nur ein Gericht, dessen Tag schon da ist. Davor plant man einfach um.
+  const current = slot.assignment;
+  const mayCancel = current?.kind === "DISH" && hasArrived(slot.date);
+
   const subtitle = [
     `${pluralPortions(slot.demand)} gebraucht`,
-    slot.packed_portions > 0 ? `${slot.packed_portions} zum Mitnehmen` : null,
-    TIME_LABEL[slot.time_budget],
+    slot.packed_portions > 0
+      ? `${slot.packed_portions} ${slot.packed_fresh ? "frisch " : ""}zum Mitnehmen`
+      : null,
+    slot.time_budget === "LITTLE" ? TIME_LABEL.LITTLE : null,
   ]
     .filter(Boolean)
     .join(" · ");
@@ -60,14 +69,33 @@ export function CandidateSheet({
       subtitle={subtitle}
       onClose={onClose}
       footer={
-        slot.assignment ? (
+        current ? (
           <div className="flex items-center justify-between gap-3">
             <span className="truncate text-sm text-ink-muted">
-              aktuell: {slot.assignment.dish_name}
+              aktuell: {current.dish_name}
+              {current.cancelled && " · ausgefallen"}
             </span>
-            <button type="button" onClick={onClear} disabled={busy} className="btn-secondary btn-sm">
-              Slot leeren
-            </button>
+            <div className="flex shrink-0 gap-2">
+              {mayCancel && (
+                <button
+                  type="button"
+                  onClick={() => onCancel(!current.cancelled)}
+                  disabled={busy}
+                  aria-pressed={current.cancelled}
+                  title={
+                    current.cancelled
+                      ? "Doch gekocht - zählt wieder für die Abwechslung"
+                      : "Nicht gekocht - zählt nicht für die Abwechslung"
+                  }
+                  className="btn-secondary btn-sm"
+                >
+                  {current.cancelled ? "doch gekocht" : "ausgefallen"}
+                </button>
+              )}
+              <button type="button" onClick={onClear} disabled={busy} className="btn-secondary btn-sm">
+                Slot leeren
+              </button>
+            </div>
           </div>
         ) : null
       }
@@ -80,8 +108,8 @@ export function CandidateSheet({
         <>
           {allowed.length === 0 && (
             <p className="px-4 py-6 text-sm text-ink-muted">
-              Kein Gericht passt in diesen Slot. Zeitbudget lockern, mehr Gerichte
-              erfassen – oder den Slot als „aus Vorhandenem“ markieren.
+              Kein Gericht passt in diesen Slot. Mehr Gerichte erfassen oder im Raster
+              anpassen, wer hier isst und mitnimmt.
             </p>
           )}
 
@@ -183,7 +211,7 @@ function candidateKey(candidate: Candidate): string {
   return [
     assignment.kind,
     assignment.dish_id,
-    assignment.doubled,
+    assignment.factor,
     assignment.leftover_source_day,
     assignment.leftover_source_meal,
   ].join(":");
@@ -196,7 +224,7 @@ function isChosen(candidate: Candidate, slot: Slot): boolean {
   return (
     current.kind === next.kind &&
     current.dish_id === next.dish_id &&
-    current.doubled === next.doubled &&
+    current.factor === next.factor &&
     current.leftover_source_day === next.leftover_source_day
   );
 }

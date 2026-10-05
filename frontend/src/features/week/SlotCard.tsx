@@ -1,11 +1,20 @@
 /**
  * Eine Slot-Karte im Wochenboard. Flach, Haarlinie, ein Akzent für Pins.
  * Reste-Portionen sind sichtbar anders (gestrichelte Kante, eigenes Icon), weil sie
- * fachlich etwas anderes sind: schon gekauft, schon gekocht.
+ * fachlich etwas anderes sind: schon gekauft, schon gekocht. Ein ausgefallenes Gericht
+ * bleibt stehen, aber durchgestrichen - so sieht man, warum es nicht als gekocht zählt.
+ * Eine kleine Uhr unten rechts heißt "wenig Zeit": dort kommen nur schnelle Gerichte hin.
  */
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import type { Slot, Warning } from "../../api/client";
-import { IconDice, IconLeftover, IconPin, IconPlus } from "../../components/Icons";
+import {
+  IconClock,
+  IconClose,
+  IconDice,
+  IconLeftover,
+  IconPin,
+  IconPlus,
+} from "../../components/Icons";
 
 export function SlotCard({
   slot,
@@ -14,6 +23,7 @@ export function SlotCard({
   onOpen,
   onPin,
   onReroll,
+  onClear,
   dragEnabled,
 }: {
   slot: Slot;
@@ -23,11 +33,14 @@ export function SlotCard({
   onOpen: () => void;
   onPin: (pinned: boolean) => void;
   onReroll: () => void;
+  onClear: () => void;
   dragEnabled: boolean;
 }) {
   const id = `${slot.day}-${slot.meal}`;
   const assignment = slot.assignment;
   const isLeftover = assignment?.kind === "LEFTOVER";
+  const cancelled = assignment?.cancelled ?? false;
+  const little = slot.time_budget === "LITTLE";
   // Auf der Karte steht *ob* etwas nicht stimmt, nicht wie viel es kostet. Die Zahl ohne
   // ihre Begruendung liest sich als Note - und eine Woche voller "-11,0" entmutigt, ohne
   // etwas zu erklaeren. Der Score gehoert dorthin, wo auch seine Beitraege stehen: ins
@@ -41,7 +54,7 @@ export function SlotCard({
   const { setNodeRef: setDropRef, isOver } = useDroppable({
     id: `drop-${id}`,
     data: { day: slot.day, meal: slot.meal },
-    disabled: !dragEnabled || slot.special === "EATING_OUT",
+    disabled: !dragEnabled || slot.demand === 0 || slot.special === "EATING_OUT",
   });
   const {
     attributes,
@@ -54,22 +67,14 @@ export function SlotCard({
     disabled: !dragEnabled || !assignment || slot.pinned,
   });
 
-  if (slot.special === "EATING_OUT") {
+  // "auswärts" gibt es nur noch als Abkürzung im Raster - es heißt "niemand da".
+  if (slot.demand === 0 || slot.special === "EATING_OUT") {
+    // Schraffiert statt gestrichelt: der leere Slot daneben wartet auf ein Gericht, dieser
+    // hier nicht. Vorher sahen beide gleich blass aus.
     return (
-      <div
-        className="flex min-h-[4.5rem] flex-col justify-center rounded-md border border-dashed
-                   border-line bg-sunken/60 px-2.5 py-2 text-center"
-      >
-        <span className="text-xs text-ink-faint">auswärts</span>
-      </div>
-    );
-  }
-
-  if (slot.demand === 0) {
-    return (
-      <div className="flex min-h-[4.5rem] flex-col justify-center rounded-md border border-dashed
-                      border-line bg-sunken/40 px-2.5 py-2 text-center">
-        <span className="text-xs text-ink-faint">
+      <div className="hatch flex min-h-[4.5rem] flex-col justify-center rounded-md border
+                      border-line-strong bg-sunken px-2.5 py-2 text-center">
+        <span className="mx-auto rounded bg-sunken px-1.5 text-xs font-medium text-ink-muted">
           {slot.packed_portions > 0 ? "mitgenommen" : "niemand da"}
         </span>
       </div>
@@ -88,7 +93,9 @@ export function SlotCard({
           ? "border-dashed border-line bg-sunken/40 hover:border-accent-line hover:bg-accent-soft/40"
           : isLeftover
             ? "border-dashed border-accent-line bg-accent-soft/50"
-            : "border-line bg-surface hover:border-line-strong",
+            : cancelled
+              ? "border-line bg-sunken/60 hover:border-line-strong"
+              : "border-line bg-surface hover:border-line-strong",
         isOver ? "border-accent bg-accent-soft" : "",
         isDragging ? "opacity-40" : "",
         slot.special === "FROM_PANTRY" ? "ring-1 ring-inset ring-warn-line" : "",
@@ -113,7 +120,12 @@ export function SlotCard({
           <>
             <span className="flex w-full items-start gap-1">
               {isLeftover && <IconLeftover className="mt-[3px] h-3.5 w-3.5 text-accent" />}
-              <span className="line-clamp-2 flex-1 text-sm font-medium leading-snug">
+              <span
+                className={[
+                  "line-clamp-2 flex-1 text-sm font-medium leading-snug",
+                  cancelled ? "text-ink-muted line-through" : "",
+                ].join(" ")}
+              >
                 {assignment!.dish_name}
               </span>
             </span>
@@ -123,22 +135,36 @@ export function SlotCard({
               ) : (
                 <>
                   <span>{assignment!.portions} P</span>
-                  {assignment!.doubled && <span className="text-accent">×2</span>}
+                  {assignment!.factor > 1 && (
+                    <span className="text-accent">×{assignment!.factor}</span>
+                  )}
+                  {cancelled && <span className="text-ink-muted">ausgefallen</span>}
                 </>
               )}
-              {level && (
-                <span
-                  className={[
-                    "ml-auto h-1.5 w-1.5 rounded-full",
-                    level === "ERROR" ? "bg-danger" : "bg-warn",
-                  ].join(" ")}
-                  aria-label={level === "ERROR" ? "Fehler" : "Hinweis"}
-                />
+              {(little || level) && (
+                <span className="ml-auto flex items-center gap-1">
+                  {little && <LittleTime />}
+                  {level && (
+                    <span
+                      className={[
+                        "h-1.5 w-1.5 rounded-full",
+                        level === "ERROR" ? "bg-danger" : "bg-warn",
+                      ].join(" ")}
+                      aria-label={level === "ERROR" ? "Fehler" : "Hinweis"}
+                    />
+                  )}
+                </span>
               )}
             </span>
           </>
         )}
       </button>
+
+      {empty && little && (
+        <span className="pointer-events-none absolute bottom-1.5 right-2">
+          <LittleTime />
+        </span>
+      )}
 
       <div className="absolute right-1 top-1 flex gap-0.5 opacity-0 transition-opacity
                       duration-fast focus-within:opacity-100 group-hover:opacity-100">
@@ -154,6 +180,20 @@ export function SlotCard({
             className="rounded p-1 text-ink-faint hover:bg-sunken hover:text-ink"
           >
             <IconDice className="h-3.5 w-3.5" />
+          </button>
+        )}
+        {assignment && (
+          <button
+            type="button"
+            title="Mahlzeit leeren"
+            aria-label={`${id} leeren`}
+            onClick={(event) => {
+              event.stopPropagation();
+              onClear();
+            }}
+            className="rounded p-1 text-ink-faint hover:bg-danger-soft hover:text-danger"
+          >
+            <IconClose className="h-3.5 w-3.5" />
           </button>
         )}
         <button
@@ -185,5 +225,13 @@ export function SlotCard({
       )}
       <span className="sr-only">{iso}</span>
     </div>
+  );
+}
+
+function LittleTime() {
+  return (
+    <span role="img" aria-label="wenig Zeit" title="wenig Zeit - nur schnelle Gerichte oder Reste">
+      <IconClock className="h-3 w-3 text-ink-muted" />
+    </span>
   );
 }

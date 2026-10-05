@@ -41,38 +41,38 @@ BASIS_LABEL: dict[Unit, str] = {
 @dataclass(frozen=True, slots=True)
 class Nutrients:
     kcal: Decimal = Decimal(0)
-    protein_g: Decimal = Decimal(0)
     carbs_g: Decimal = Decimal(0)
     fat_g: Decimal = Decimal(0)
+    protein_g: Decimal = Decimal(0)
 
     def __add__(self, other: Nutrients) -> Nutrients:
         return Nutrients(
             self.kcal + other.kcal,
-            self.protein_g + other.protein_g,
             self.carbs_g + other.carbs_g,
             self.fat_g + other.fat_g,
+            self.protein_g + other.protein_g,
         )
 
     def scaled(self, factor: Decimal) -> Nutrients:
         return Nutrients(
             self.kcal * factor,
-            self.protein_g * factor,
             self.carbs_g * factor,
             self.fat_g * factor,
+            self.protein_g * factor,
         )
 
     def rounded(self) -> Nutrients:
         """Auf ganze kcal und eine Nachkommastelle bei den Makros."""
         return Nutrients(
             self.kcal.quantize(Decimal(1)),
-            self.protein_g.quantize(Decimal("0.1")),
             self.carbs_g.quantize(Decimal("0.1")),
             self.fat_g.quantize(Decimal("0.1")),
+            self.protein_g.quantize(Decimal("0.1")),
         )
 
     @property
     def is_zero(self) -> bool:
-        return not (self.kcal or self.protein_g or self.carbs_g or self.fat_g)
+        return not (self.kcal or self.carbs_g or self.fat_g or self.protein_g)
 
 
 @dataclass(frozen=True, slots=True)
@@ -157,12 +157,12 @@ def article_nutrition(
     unit: Unit,
     *,
     kcal: Decimal | None,
-    protein_g: Decimal | None,
     carbs_g: Decimal | None,
     fat_g: Decimal | None,
+    protein_g: Decimal | None,
 ) -> ArticleNutrition | None:
     """`None`, solange nichts erfasst ist - fehlende Werte zählen nicht als Null."""
-    values = (kcal, protein_g, carbs_g, fat_g)
+    values = (kcal, carbs_g, fat_g, protein_g)
     if all(value is None for value in values):
         return None
     return ArticleNutrition(
@@ -170,8 +170,8 @@ def article_nutrition(
         unit=unit,
         per_basis=Nutrients(
             kcal=kcal or Decimal(0),
-            protein_g=protein_g or Decimal(0),
             carbs_g=carbs_g or Decimal(0),
             fat_g=fat_g or Decimal(0),
+            protein_g=protein_g or Decimal(0),
         ),
     )

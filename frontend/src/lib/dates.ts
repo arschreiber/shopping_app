@@ -71,6 +71,13 @@ export function isToday(iso: string, day: number): boolean {
   );
 }
 
-export function todayIsoDate(): string {
-  return new Date().toISOString().slice(0, 10);
+/** Heute als YYYY-MM-DD in Ortszeit - `toISOString` wäre bis 2 Uhr nachts noch gestern. */
+export function todayIsoDate(now: Date = new Date()): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
+
+/** Ist der Tag (YYYY-MM-DD) schon da? Heute zählt mit. */
+export function hasArrived(isoDate: string, now: Date = new Date()): boolean {
+  return isoDate <= todayIsoDate(now);
 }

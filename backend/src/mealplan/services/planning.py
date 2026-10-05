@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import random
 from dataclasses import dataclass
+from datetime import date, timedelta
 
 from sqlalchemy.orm import Session
 
@@ -24,7 +25,7 @@ from ..domain.model import (
     SlotKey,
 )
 from ..domain.planner import candidates as domain_candidates
-from ..domain.planner import propose, reroll, rescore
+from ..domain.planner import propose, reroll, reroll_options, rescore
 from . import settings_store
 from .articles import ValidationError
 from .weeks import ConflictError, get_or_create_week
@@ -95,6 +96,9 @@ def propose_week(
             if not assignment.is_empty and key not in pinned
         }
 
+    # Neuer Seed pro Klick: sonst liefert dieselbe Woche immer denselben Plan. Er wird an
+    # der Woche gespeichert - der gespeicherte Plan bleibt nachstellbar.
+    week.planner_seed = random.Random(week.planner_seed).randrange(1, 2**31)
     plan = propose(snapshot, pinned, seed=week.planner_seed, keep=keep)
     _persist(session, week, plan, snapshot)
     return PlanResult(week, plan, snapshot, diagnose(plan, snapshot))
@@ -114,13 +118,7 @@ def reroll_slot(
     # Ein stilles "nichts passiert" wäre die schlechtere Antwort: bei einem kleinen
     # Gerichte-Pool ist jedes andere Gericht schon in der Woche verplant, und der
     # Nutzer soll das erfahren statt zweimal zu klicken.
-    current_choice = current.get(key)
-    alternatives = [
-        candidate
-        for candidate in domain_candidates(snapshot.slot(key), current.without(key), snapshot)
-        if not candidate.assignment.same_choice(current_choice)
-    ]
-    if not alternatives:
+    if not reroll_options(snapshot, current, key):
         raise ValidationError(
             f"Keine Alternative für {key} - alle passenden Gerichte sind diese Woche "
             "schon verplant. Mehr Gerichte erfassen oder einen anderen Slot ändern."
@@ -150,6 +148,11 @@ def set_assignment(
     key = SlotKey.of(day, meal)
     slot_spec = snapshot.slot(key)
 
+    # Hier isst niemand: ein Gericht stünde unsichtbar hinter der "niemand da"-Karte.
+    feeds = assignment.cooks or assignment.kind is AssignmentKind.LEFTOVER
+    if feeds and not slot_spec.needs_cooking:
+        raise ValidationError(f"{key}: hier isst niemand - nichts zu planen")
+
     if assignment.kind is AssignmentKind.DISH:
         if assignment.dish_id is None:
             raise ValidationError("Gericht fehlt")
@@ -169,20 +172,18 @@ def set_assignment(
 def _validate_dish_choice(
     snapshot: PlanningSnapshot, plan: Plan, key: SlotKey, assignment: Assignment
 ) -> None:
-    from ..domain.eligibility import eligible
+    from ..domain.eligibility import eligible, factor_reason
 
     dish = snapshot.dish_or_none(assignment.dish_id)
     if dish is None:
         raise ValidationError(f"Gericht {assignment.dish_id} ist nicht planbar (archiviert?)")
-    verdict = eligible(dish, snapshot.slot(key), plan.without(key), doubled=assignment.doubled)
+    # Manuelle Wahl darf Warnungen erzeugen, aber keine unmögliche Woche: wie oft ein
+    # Gericht auf einmal gekocht wird und das Portionsdefizit sind nicht verhandelbar.
+    if assignment.factor not in dish.factors:
+        raise ValidationError(factor_reason(dish, assignment.factor))
+    verdict = eligible(dish, snapshot.slot(key), plan.without(key), factor=assignment.factor)
     if not verdict.ok:
-        # Manuelle Wahl darf Warnungen erzeugen, aber keine unmögliche Woche:
-        # Portionsdefizit und Verdoppeln-Regel sind nicht verhandelbar.
-        blocking = [
-            reason
-            for reason in verdict.reasons
-            if "reichen nicht" in reason or "verdoppelbar" in reason
-        ]
+        blocking = [reason for reason in verdict.reasons if "reichen nicht" in reason]
         if blocking:
             raise ValidationError("; ".join(blocking))
 
@@ -194,6 +195,8 @@ def _validate_leftover_choice(
 
     if assignment.leftover_source is None:
         raise ValidationError("Quelle der Reste fehlt")
+    if snapshot.slot(key).fresh_only:
+        raise ValidationError(f"{key} wird frisch mitgenommen - dafür wird gekocht, keine Reste")
     ledger = PortionLedger.of(plan.without(key), snapshot)
     pools = [p for p in ledger.available_at(key) if p.source == assignment.leftover_source]
     if not pools:
@@ -231,6 +234,52 @@ def toggle_pin(session: Session, iso: str, day: int, meal: Meal, *, pinned: bool
     raise ValidationError(f"Slot {day}/{meal.value} gehört nicht zur Woche")
 
 
+def set_cancelled(
+    session: Session,
+    iso: str,
+    day: int,
+    meal: Meal,
+    *,
+    cancelled: bool,
+    today: date | None = None,
+) -> m.Week:
+    """Ein geplantes Gericht ist ausgefallen - oder doch gekocht worden.
+
+    Ausgefallen zählt nicht als gekocht (`mappers.last_cooked`), sonst bekäme es
+    wochenlang einen Abzug für ein Essen, das es nie gab. Am Plan selbst ändert sich
+    nichts: der Tag ist vorbei, eingekauft ist auch.
+    """
+    week = get_or_create_week(session, iso)
+    slot = next((s for s in week.slots if s.day == day and s.meal == meal.value), None)
+    if slot is None:
+        raise ValidationError(f"Slot {day}/{meal.value} gehört nicht zur Woche")
+    key = SlotKey.of(day, meal)
+    assignment = slot.assignment
+    if assignment is None or assignment.kind != AssignmentKind.DISH.value:
+        raise ValidationError(f"{key}: hier ist kein Gericht geplant, das ausfallen könnte")
+    served = mappers.week_start(week.iso_year, week.iso_week) + timedelta(days=day)
+    if served > (today or date.today()):
+        raise ValidationError(f"{key} ist noch nicht dran - statt 'ausgefallen' einfach umplanen")
+
+    entries = [entry for entry in slot.cook_entries if entry.dish_id == assignment.dish_id]
+    if cancelled and not entries:
+        slot.cook_entries.append(
+            m.CookLog(dish_id=assignment.dish_id, cooked_at=served, confirmed=False)
+        )
+    for entry in entries:
+        if cancelled:
+            entry.confirmed = False
+        elif not entry.confirmed and entry.rating is None and entry.note is None:
+            # Zurück auf "zählt, weil geplant" - eine leere Zeile sagt nichts mehr.
+            slot.cook_entries.remove(entry)
+            session.delete(entry)
+        else:
+            entry.confirmed = True
+    week.version += 1
+    session.flush()
+    return week
+
+
 def diagnostics(session: Session, iso: str) -> tuple[list[PlanWarning], PlanningSnapshot]:
     week = get_or_create_week(session, iso)
     snapshot, plan = build_context(session, week)
@@ -256,7 +305,7 @@ def _persist(session: Session, week: m.Week, plan: Plan, snapshot: PlanningSnaps
         payload = {
             "kind": assignment.kind.value,
             "dish_id": assignment.dish_id,
-            "doubled": assignment.doubled,
+            "factor": assignment.factor,
             "leftover_source_slot_id": source_id,
             "portions_used": assignment.portions_used,
             "score_snapshot": mappers.breakdown_to_json(assignment.score),
