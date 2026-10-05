@@ -73,8 +73,12 @@ function useWeekMutation<TVars>(
     mutationFn: run,
     onSuccess: (week) => {
       client.setQueryData(keys.week(iso), week);
-      client.invalidateQueries({ queryKey: ["candidates", iso] });
       client.invalidateQueries({ queryKey: keys.shopping(iso) });
+      // Der Plan ist zugleich der Koch-Verlauf: "vor N Wo." bei den Gerichten und die
+      // Abwechslung in den Kandidaten der anderen Wochen hängen an ihm.
+      client.invalidateQueries({ queryKey: ["candidates"] });
+      client.invalidateQueries({ queryKey: ["dishes"] });
+      client.invalidateQueries({ queryKey: ["dish"] });
     },
   });
 }
@@ -120,7 +124,7 @@ export type AssignmentPayload = {
   meal: Meal;
   kind: "DISH" | "LEFTOVER" | "PANTRY" | "EMPTY";
   dish_id?: number | null;
-  doubled?: boolean;
+  factor?: number; // 2 = doppelt, 3 = dreifach gekocht
   leftover_source_day?: number | null;
   leftover_source_meal?: Meal | null;
   portions_used?: number | null;
@@ -134,7 +138,7 @@ export function useAssign(iso: string) {
         body: {
           kind: body.kind,
           dish_id: body.dish_id ?? null,
-          doubled: body.doubled ?? false,
+          factor: body.factor ?? 1,
           leftover_source_day: body.leftover_source_day ?? null,
           leftover_source_meal: body.leftover_source_meal ?? null,
           portions_used: body.portions_used ?? null,
@@ -163,6 +167,20 @@ export function usePin(iso: string) {
         api.PUT("/api/weeks/{iso}/slots/{day}/{meal}/pin", {
           params: { path: { iso, day, meal } },
           body: { pinned },
+        }),
+      ),
+  );
+}
+
+/** Gericht ausgefallen (oder doch gekocht) - zählt dann nicht für die Abwechslung. */
+export function useSetCancelled(iso: string) {
+  return useWeekMutation<{ day: number; meal: Meal; cancelled: boolean }>(
+    iso,
+    ({ day, meal, cancelled }) =>
+      unwrap(
+        api.PUT("/api/weeks/{iso}/slots/{day}/{meal}/cancelled", {
+          params: { path: { iso, day, meal } },
+          body: { cancelled },
         }),
       ),
   );

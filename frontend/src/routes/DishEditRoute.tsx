@@ -80,6 +80,8 @@ export function DishEditRoute() {
                   name: draft.name,
                   portions: draft.portions,
                   packable: draft.packable,
+                  allow_double: draft.allow_double,
+                  allow_triple: draft.allow_triple,
                   effort: draft.effort,
                   suitable_for: draft.suitable_for,
                   rating: draft.rating,
@@ -95,7 +97,13 @@ export function DishEditRoute() {
               },
               {
                 onError: (error) => toast.show(errorText(error), "error"),
-                onSuccess: () => toast.show("Gespeichert", "ok"),
+                // Gespeichert heißt fertig: zurück zur Liste, wie nach Abbrechen und
+                // Archivieren. Ein offenes Formular über gespeicherten Daten sieht aus,
+                // als stünde die Änderung noch aus.
+                onSuccess: () => {
+                  toast.show("Gespeichert", "ok");
+                  navigate("/dishes");
+                },
               },
             )
           }

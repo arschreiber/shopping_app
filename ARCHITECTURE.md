@@ -34,6 +34,10 @@ Integrations-Adaptern und einer SPA, die den Kern nur rendert (keine Logik-Dupli
   Kategorie-Vorschläge fallen weg → Kategorien als Chip-Picker, häufigste Chips vorne.
 - **§7 „LLM als Schiedsrichter“ beim Angebots-Matching wird verschoben.** MVP: Alias-Liste +
   RapidFuzz + „Unzugeordnet“-Ansicht. Der Port existiert, die Implementierung nicht.
+- **§8 Nr. 11 umgedreht:** statt „gekocht“ zu bestätigen, gilt ein geplantes Gericht ab seinem
+  Tag als gekocht, und nur „ausgefallen“ ist ein Klick. Ein vergessenes Bestätigen hätte die
+  Rotation über die Wochen ganz abgeschaltet; ein vergessenes „ausgefallen“ kostet nur einen
+  kleinen Abzug für ein paar Wochen.
 - **§8 Nr. 13 wird weiter gefasst:** die App ist im Heimnetz ohne Anmeldung erreichbar – bewusst,
   weil das den Alltag spürbar vereinfacht (kein Login, kein Tailscale-Client auf jedem Gerät).
   Von außen bleibt Tailscale der Weg, im Router wird **kein** Port weitergeleitet. Preis der
@@ -140,13 +144,13 @@ Kern (Phase 1):
 | `article` | `canonical_name`, `unit`, `bring_category`, `bring_catalog_name`, `is_staple`, `is_watchlist` | `unit` ist **eine** kanonische Einheit pro Artikel (Plan §8 Nr. 10) |
 | `article_alias` | `article_id`, `alias`, `kind` (ALIAS/EIGENMARKE), `store_id?` | Basis für Angebots-Matching |
 | `category` | `axis` (SIDE/PROTEIN/CUISINE), `name` | Achsen als Enum, Werte als Zeilen → keine Spaltenwucherung |
-| `dish` | `name`, `portions` (2/3), `packable`, `effort`, `suitable_for`, `rating`, `prep_text`, `archived` | „verdoppelbar“ = abgeleitet aus `portions == 2` |
+| `dish` | `name`, `portions` (1/2/3), `packable`, `allow_double`, `allow_triple`, `effort` (NORMAL/QUICK), `suitable_for`, `rating`, `prep_text`, `archived` | erlaubte Faktoren: 1er-Gericht ×2/×3 per Schalter, 2er-Gericht ×2 per `allow_double`, 3er nie (`DishSpec.factors`) |
 | `dish_category` | `dish_id`, `category_id` | m:n |
 | `ingredient` | `dish_id`, `article_id`, `quantity` (Decimal, NULL = „nach Bedarf“), `unit`, `sort_order` | `unit` muss zu `article.unit` dimensionsgleich sein |
 | `week` | `iso_year`, `iso_week`, `primary_store_id`, `secondary_store_id?`, `planner_seed`, `version` | `version` = optimistisches Locking (Laptop + Handy gleichzeitig) |
-| `slot` | `week_id`, `day` 0–6, `meal` (LUNCH/DINNER), `eaters_home` 0–2, `packed_portions` 0–2, `time_budget`, `special` (NONE/EATING_OUT/FROM_PANTRY), `pinned` | Das Wochenraster |
-| `slot_assignment` | `slot_id` PK, `kind` (DISH/LEFTOVER/PANTRY/EMPTY), `dish_id?`, `doubled`, `leftover_source_slot_id?`, `portions_used?`, `score_snapshot` JSON | Union-Type als tagged column; `score_snapshot` friert die Begründung ein |
-| `cook_log` | `slot_id`, `dish_id`, `cooked_at`, `confirmed`, `rating`, `note` | Trennt „geplant“ von „gekocht“ (Plan §8 Nr. 11) |
+| `slot` | `week_id`, `day` 0–6, `meal` (LUNCH/DINNER), `eaters_home` 0–2, `packed_portions` 0–2, `packed_fresh`, `time_budget` (NORMAL/LITTLE), `special` (NONE/EATING_OUT/FROM_PANTRY), `pinned` | Das Wochenraster; `packed_fresh` = Mitnehm-Portionen frisch gekocht statt vorgekocht (keine Reste) |
+| `slot_assignment` | `slot_id` PK, `kind` (DISH/LEFTOVER/PANTRY/EMPTY), `dish_id?`, `factor` 1–3, `leftover_source_slot_id?`, `portions_used?`, `score_snapshot` JSON | Union-Type als tagged column; `score_snapshot` friert die Begründung ein |
+| `cook_log` | `slot_id`, `dish_id`, `cooked_at`, `confirmed`, `rating`, `note` | Trennt „geplant“ von „gekocht“ (Plan §8 Nr. 11): ohne Zeile zählt ein geplantes Gericht ab seinem Tag als gekocht; `confirmed = false` mit `slot_id` = ausgefallen, `confirmed = true` = ausdrücklich gekocht (auch ohne Plan) |
 | `shopping_list` | `week_id`, `status` (DRAFT/SENT), `sent_at` | |
 | `shopping_list_item` | `article_id`, `quantity`, `unit`, `source` (RECIPE/MANUAL/WATCHLIST), `have_already`, `store_id?`, `spec_text`, `from_dish_ids` JSON | `from_dish_ids` = „warum steht das drauf?“ |
 | `bring_sync_item` | `article_id`, `bring_list_uuid`, `bring_item_uuid`, `last_name`, `last_spec`, `last_pushed_at` | Eigene UUIDs → nie Fremdeinträge anfassen (Plan §8 Nr. 8) |
@@ -210,7 +214,7 @@ Drei Entscheidungen, die den Rest tragen:
    Mitnehmen, Aufwand passt nicht zur Zeit, Portion bleibt übrig).
 
 **`PortionLedger`** ist die Stelle, an der die untersuchten Konkurrenzprodukte scheitern, also die
-Stelle mit den meisten Tests: `produced = portions × (2 wenn doubled)`,
+Stelle mit den meisten Tests: `produced = portions × factor`,
 `needed = eaters_home + packed_portions`, Überschuss mit Haltbarkeit 1–2 Tagen, `LEFTOVER`-Zuweisungen
 ziehen aus einer unverfallenen Quelle. Invarianten (nie überziehen, nie über Haltbarkeit hinaus,
 Verschwendung = Abzug) als Hypothesis-Property-Tests.

@@ -24,6 +24,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -88,9 +89,9 @@ class Article(Base, TimestampMixin):
     # deshalb kein eigenes Feld: je 100 g, je 100 ml oder je 1 Stück. Ohne Werte bleibt
     # der Artikel einfach ungezählt - sichtbar als Lücke, nicht als stille Null.
     kcal: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
-    protein_g: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
     carbs_g: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
     fat_g: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
+    protein_g: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
 
     aliases: Mapped[list[ArticleAlias]] = relationship(
         back_populates="article", cascade="all, delete-orphan", lazy="selectin"
@@ -133,6 +134,14 @@ class Dish(Base, TimestampMixin):
     name: Mapped[str] = mapped_column(String(160), unique=True)
     portions: Mapped[int] = mapped_column(Integer, default=3)
     packable: Mapped[bool] = mapped_column(Boolean, default=True)
+    # 2er-Gerichte: auf 4 verdoppeln; 1er-Gerichte: doppelt bzw. dreifach kochen.
+    # 3er-Gerichte werden nie vervielfacht (domain/model.py `DishSpec.factors`).
+    allow_double: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=text("1")
+    )
+    allow_triple: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("0")
+    )
     effort: Mapped[str] = mapped_column(_enum(Effort), default=Effort.NORMAL.value)
     suitable_for: Mapped[str] = mapped_column(
         _enum(SuitableFor), default=SuitableFor.BOTH.value
@@ -153,7 +162,7 @@ class Dish(Base, TimestampMixin):
     )
 
     __table_args__ = (
-        CheckConstraint("portions in (2, 3)", name="ck_dish_portions"),
+        CheckConstraint("portions in (1, 2, 3)", name="ck_dish_portions"),
         CheckConstraint("rating is null or rating between 1 and 5", name="ck_dish_rating"),
     )
 
@@ -225,8 +234,9 @@ class Slot(Base):
     meal: Mapped[str] = mapped_column(_enum(Meal))
     eaters_home: Mapped[int] = mapped_column(Integer, default=2)
     packed_portions: Mapped[int] = mapped_column(Integer, default=0)
+    packed_fresh: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("0"))
     time_budget: Mapped[str] = mapped_column(
-        _enum(TimeBudget), default=TimeBudget.PLENTY.value
+        _enum(TimeBudget), default=TimeBudget.NORMAL.value
     )
     special: Mapped[str] = mapped_column(_enum(SlotSpecial), default=SlotSpecial.NONE.value)
     pinned: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -238,6 +248,11 @@ class Slot(Base):
         uselist=False,
         lazy="selectin",
         foreign_keys="SlotAssignment.slot_id",
+    )
+    # Was in diesem Slot wirklich passiert ist, soweit jemand etwas dazu gesagt hat
+    # (heute nur "ausgefallen"). Kein delete-orphan: der Verlauf überlebt den Slot.
+    cook_entries: Mapped[list[CookLog]] = relationship(
+        back_populates="slot", lazy="selectin", passive_deletes=True
     )
 
     __table_args__ = (
@@ -256,7 +271,7 @@ class SlotAssignment(Base):
     )
     kind: Mapped[str] = mapped_column(_enum(AssignmentKind))
     dish_id: Mapped[int | None] = mapped_column(ForeignKey("dish.id", ondelete="CASCADE"))
-    doubled: Mapped[bool] = mapped_column(Boolean, default=False)
+    factor: Mapped[int] = mapped_column(Integer, default=1, server_default=text("1"))
     leftover_source_slot_id: Mapped[int | None] = mapped_column(
         ForeignKey("slot.id", ondelete="CASCADE")
     )
@@ -268,7 +283,13 @@ class SlotAssignment(Base):
 
 
 class CookLog(Base):
-    """Trennt "geplant" von "gekocht" (general_plan.md §8 Nr. 11)."""
+    """Trennt "geplant" von "gekocht" (general_plan.md §8 Nr. 11).
+
+    Ein geplantes Gericht gilt als gekocht, sobald sein Tag da ist - dafür braucht es
+    keine Zeile. Eine Zeile gibt es nur, wenn jemand etwas dazu gesagt hat:
+    `confirmed = false` mit `slot_id` heißt "ausgefallen" (zählt nicht), `confirmed =
+    true` ist ein ausdrücklich bestätigtes Kochen, auch ohne Plan.
+    """
 
     __tablename__ = "cook_log"
 
@@ -279,6 +300,8 @@ class CookLog(Base):
     confirmed: Mapped[bool] = mapped_column(Boolean, default=False)
     rating: Mapped[int | None] = mapped_column(Integer)
     note: Mapped[str | None] = mapped_column(Text)
+
+    slot: Mapped[Slot | None] = relationship(back_populates="cook_entries")
 
     __table_args__ = (
         Index("ix_cook_log_dish", "dish_id", "cooked_at"),

@@ -43,9 +43,15 @@ class PlannerWeights:
     leftover_assignment: float = 7.0  # Reste-Karte statt neu kochen (kein Einkauf)
     doubling: float = -2.0  # verdoppeln ist Mehraufwand
 
-    # --- Aufwand vs. Zeitbudget
-    effort_slack: float = 2.0  # aufwendiges Gericht an einem Tag mit viel Zeit
-    quick_when_little_time: float = 3.0
+    # --- Zufall beim Auto-Vorschlag: jedes frische Gericht bekommt beim Auswählen 0..Z
+    # Punkte dazu. Ähnlich gute Gerichte wechseln sich so ab; ein Gericht mit klarem
+    # Abzug (gleiches Protein am Folgetag: -14) bleibt praktisch draußen. 0 = immer
+    # derselbe Plan.
+    randomness: float = 6.0
+
+    # Aufwand gibt keine Punkte: bei wenig Zeit ist er eine harte Regel (nur schnelle
+    # Gerichte), und ein Bonus dafür bekäme dort jedes frische Gericht gleichermaßen -
+    # er würde nur die Reste zurücksetzen, die an knappen Tagen ideal sind.
 
     def to_mapping(self) -> dict[str, float]:
         return asdict(self)

@@ -15,6 +15,7 @@ from ..domain.model import (
     PlanWarning,
     ScoreBreakdown,
     SlotKey,
+    dish_factors,
 )
 from ..domain.nutrition import DishNutrition
 from ..domain.units import Quantity, format_quantity, trim
@@ -55,7 +56,7 @@ def score_out(breakdown: ScoreBreakdown | None) -> ScoreOut | None:
 
 
 def assignment_out(
-    assignment: Assignment, snapshot: PlanningSnapshot
+    assignment: Assignment, snapshot: PlanningSnapshot, *, cancelled: bool = False
 ) -> AssignmentOut | None:
     if assignment.is_empty:
         return None
@@ -65,13 +66,14 @@ def assignment_out(
         kind=assignment.kind,
         dish_id=assignment.dish_id,
         dish_name=dish.name if dish else None,
-        doubled=assignment.doubled,
-        portions=dish.portions_for(doubled=assignment.doubled) if dish else None,
+        factor=assignment.factor,
+        portions=dish.portions_for(assignment.factor) if dish else None,
         leftover_source_day=source.day if source else None,
         leftover_source_meal=source.meal if source else None,
         leftover_source_label=str(source) if source else None,
         portions_used=assignment.portions_used,
         score=score_out(assignment.score),
+        cancelled=cancelled,
     )
 
 
@@ -105,11 +107,14 @@ def week_out(
                 date=start + timedelta(days=slot.day),
                 eaters_home=slot.eaters_home,
                 packed_portions=slot.packed_portions,
+                packed_fresh=spec.fresh_only,
                 time_budget=spec.time_budget,
                 special=spec.special,
                 pinned=slot.pinned,
                 demand=spec.demand,
-                assignment=assignment_out(plan.get(key), snapshot),
+                assignment=assignment_out(
+                    plan.get(key), snapshot, cancelled=mappers.is_cancelled(slot)
+                ),
             )
         )
     summary = week_summary(week)
@@ -146,15 +151,15 @@ def nutrition_out(nutrition: DishNutrition | None) -> DishNutritionOut | None:
     return DishNutritionOut(
         per_portion=NutrientsOut(
             kcal=nutrition.per_portion.kcal,
-            protein_g=nutrition.per_portion.protein_g,
             carbs_g=nutrition.per_portion.carbs_g,
             fat_g=nutrition.per_portion.fat_g,
+            protein_g=nutrition.per_portion.protein_g,
         ),
         total=NutrientsOut(
             kcal=nutrition.total.kcal,
-            protein_g=nutrition.total.protein_g,
             carbs_g=nutrition.total.carbs_g,
             fat_g=nutrition.total.fat_g,
+            protein_g=nutrition.total.protein_g,
         ),
         is_complete=nutrition.is_complete,
         has_any=nutrition.has_any,
@@ -205,7 +210,9 @@ def dish_out(
         prep_text=dish.prep_text,
         note=dish.note,
         archived=dish.archived,
-        can_double=dish.portions == 2,
+        allow_double=dish.allow_double,
+        allow_triple=dish.allow_triple,
+        factors=list(dish_factors(dish.portions, dish.allow_double, dish.allow_triple)),
         categories=[category_out(c) for c in dish.categories],
         ingredients=[ingredient_out(i) for i in dish.ingredients],
         weeks_since_cooked=weeks_since,
@@ -228,6 +235,9 @@ def dish_summary(
         name=dish.name,
         portions=dish.portions,
         packable=dish.packable,
+        allow_double=dish.allow_double,
+        allow_triple=dish.allow_triple,
+        factors=list(dish_factors(dish.portions, dish.allow_double, dish.allow_triple)),
         effort=Effort(dish.effort),
         suitable_for=SuitableFor(dish.suitable_for),
         rating=dish.rating,

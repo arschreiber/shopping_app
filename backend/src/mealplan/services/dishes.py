@@ -55,6 +55,8 @@ def create_dish(
     name: str,
     portions: int,
     packable: bool = True,
+    allow_double: bool = True,
+    allow_triple: bool = False,
     effort: Effort = Effort.NORMAL,
     suitable_for: SuitableFor = SuitableFor.BOTH,
     rating: int | None = None,
@@ -66,8 +68,8 @@ def create_dish(
     cleaned = name.strip()
     if not cleaned:
         raise ValidationError("Name fehlt")
-    if portions not in (2, 3):
-        raise ValidationError("Portionen müssen 2 oder 3 sein (general_plan.md §2)")
+    if portions not in (1, 2, 3):
+        raise ValidationError("Portionen müssen 1, 2 oder 3 sein")
     existing = session.scalar(
         select(m.Dish).where(func.lower(m.Dish.name) == cleaned.lower())
     )
@@ -84,6 +86,8 @@ def create_dish(
             existing.id,
             portions=portions,
             packable=packable,
+            allow_double=allow_double,
+            allow_triple=allow_triple,
             effort=effort,
             suitable_for=suitable_for,
             rating=rating,
@@ -97,6 +101,8 @@ def create_dish(
         name=cleaned,
         portions=portions,
         packable=packable,
+        allow_double=allow_double,
+        allow_triple=allow_triple,
         effort=effort.value,
         suitable_for=suitable_for.value,
         rating=rating,
@@ -116,10 +122,14 @@ def update_dish(session: Session, dish_id: int, **changes) -> m.Dish:
     categories = changes.pop("categories", None)
 
     if (portions := changes.pop("portions", None)) is not None:
-        if portions not in (2, 3):
-            raise ValidationError("Portionen müssen 2 oder 3 sein")
+        if portions not in (1, 2, 3):
+            raise ValidationError("Portionen müssen 1, 2 oder 3 sein")
         dish.portions = portions
-    for field in ("name", "packable", "rating", "prep_text", "note", "archived"):
+    if (name := changes.pop("name", None)) is not None:
+        dish.name = _rename_target(session, dish, name)
+    for field in (
+        "packable", "allow_double", "allow_triple", "rating", "prep_text", "note", "archived",
+    ):
         if (value := changes.pop(field, None)) is not None:
             setattr(dish, field, value.strip() if isinstance(value, str) else value)
     if (effort := changes.pop("effort", None)) is not None:
@@ -132,6 +142,26 @@ def update_dish(session: Session, dish_id: int, **changes) -> m.Dish:
     if categories is not None:
         _replace_categories(session, dish, categories)
     return dish
+
+
+def _rename_target(session: Session, dish: m.Dish, name: str) -> str:
+    """Der neue Name - sofern kein anderes Gericht ihn hat, auch kein archiviertes.
+
+    Ohne die Prüfung lief die Umbenennung in den UNIQUE-Index (500) - oder, bei anderer
+    Groß-/Kleinschreibung, an ihm vorbei zu zwei Gerichten, die gleich heißen.
+    """
+    cleaned = name.strip()
+    if not cleaned:
+        raise ValidationError("Name fehlt")
+    other = session.scalar(
+        select(m.Dish).where(
+            func.lower(m.Dish.name) == cleaned.lower(), m.Dish.id != dish.id
+        )
+    )
+    if other is not None:
+        hint = " (archiviert)" if other.archived else ""
+        raise ValidationError(f"'{cleaned}' gibt es schon{hint}")
+    return cleaned
 
 
 def archive_dish(session: Session, dish_id: int) -> m.Dish:

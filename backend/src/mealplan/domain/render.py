@@ -10,7 +10,7 @@ from __future__ import annotations
 from .enums import AssignmentKind, SlotSpecial, TimeBudget
 from .model import Plan, PlanningSnapshot, PlanWarning
 
-_BUDGET = {TimeBudget.PLENTY: "viel", TimeBudget.LITTLE: "wenig", TimeBudget.NONE: "keine"}
+_BUDGET = {TimeBudget.NORMAL: "normal", TimeBudget.LITTLE: "wenig"}
 _SPECIAL = {
     SlotSpecial.NONE: "",
     SlotSpecial.EATING_OUT: " [auswärts]",
@@ -24,7 +24,7 @@ def render_plan(plan: Plan, snap: PlanningSnapshot, *, with_reasons: bool = True
         assignment = plan.get(slot.key)
         head = (
             f"{slot.key!s:<10} {slot.eaters_home}+{slot.packed_portions} P, "
-            f"{_BUDGET[slot.time_budget]:>5} Zeit{_SPECIAL[slot.special]}"
+            f"{_BUDGET[slot.time_budget]:>6} Zeit{_SPECIAL[slot.special]}"
         )
         lines.append(f"{head}  ->  {_describe(assignment, snap)}")
         if with_reasons and assignment.score is not None:
@@ -53,8 +53,8 @@ def _describe(assignment, snap: PlanningSnapshot) -> str:
             dish = snap.dish_or_none(assignment.dish_id)
             if dish is None:
                 return "?"
-            portions = dish.portions_for(doubled=assignment.doubled)
-            suffix = " ×2" if assignment.doubled else ""
+            portions = dish.portions_for(assignment.factor)
+            suffix = f" ×{assignment.factor}" if assignment.factor > 1 else ""
             score = f" [{assignment.score.total:+.1f}]" if assignment.score else ""
             return f"{dish.name}{suffix} ({portions} P){score}"
     return "?"

@@ -56,10 +56,40 @@ def test_dish_with_ingredients(client):
     )
     assert response.status_code == 201, response.text
     dish = response.json()
-    assert dish["can_double"] is False  # 3 Portionen
+    assert dish["factors"] == [1]  # 3 Portionen: nie vervielfacht
     assert [i["spec_text"] for i in dish["ingredients"]] == ["250 g", "200 g"]
     assert {c["name"] for c in dish["categories"]} == {"Reis", "Hirtenkäse"}
 
+
+def test_doubling_can_be_switched_off_on_a_two_portion_dish(client):
+    """`allow_double` ist der Schalter, `factors` das Ergebnis daraus."""
+    dish_id = client.post("/api/dishes", json={"name": "Auflauf", "portions": 2}).json()["id"]
+    assert client.get(f"/api/dishes/{dish_id}").json()["factors"] == [1, 2]
+
+    patched = client.patch(f"/api/dishes/{dish_id}", json={"allow_double": False}).json()
+    assert patched["allow_double"] is False
+    assert patched["factors"] == [1]
+    assert client.get("/api/dishes").json()[0]["allow_double"] is False
+
+
+
+def test_single_portion_dishes_choose_their_factors(client):
+    """Bei 1 Portion sind doppelt *und* dreifach zugleich wählbar."""
+    ramen = client.post(
+        "/api/dishes",
+        json={"name": "Ramen", "portions": 1, "allow_double": True, "allow_triple": True},
+    ).json()
+    assert ramen["factors"] == [1, 2, 3]
+
+    patched = client.patch(f"/api/dishes/{ramen['id']}", json={"allow_double": False}).json()
+    assert patched["factors"] == [1, 3]
+    assert client.get("/api/dishes").json()[0]["factors"] == [1, 3]
+
+
+def test_portions_stay_between_one_and_three(client):
+    for portions in (0, 4):
+        response = client.post("/api/dishes", json={"name": f"P{portions}", "portions": portions})
+        assert response.status_code == 422
 
 def test_ingredient_unit_must_match_article_dimension(client):
     onions = create_article(client, "Zwiebeln", "STUECK")
@@ -143,3 +173,21 @@ def test_an_active_dish_name_is_still_taken(client):
     response = client.post("/api/dishes", json={"name": "pizza", "portions": 2})
     assert response.status_code == 422
     assert "gibt es schon" in response.json()["detail"]
+
+
+def test_renaming_onto_a_taken_name_is_refused(client):
+    """Lief vorher in den UNIQUE-Index (500) - oder, anders geschrieben, an ihm vorbei."""
+    client.post("/api/dishes", json={"name": "Pizza", "portions": 2})
+    soup = client.post("/api/dishes", json={"name": "Suppe", "portions": 2}).json()
+    old = client.post("/api/dishes", json={"name": "Chili", "portions": 2}).json()
+    client.delete(f"/api/dishes/{old['id']}")
+
+    for name, hint in (("Pizza", ""), ("pizza", ""), ("Chili", " (archiviert)")):
+        response = client.patch(f"/api/dishes/{soup['id']}", json={"name": name})
+        assert response.status_code == 422, name
+        assert response.json()["detail"] == f"'{name}' gibt es schon{hint}"
+
+    assert client.patch(f"/api/dishes/{soup['id']}", json={"name": " "}).status_code == 422
+    own = client.patch(f"/api/dishes/{soup['id']}", json={"name": " suppe "})
+    assert own.status_code == 200, "die eigene Schreibweise ändern geht"
+    assert own.json()["name"] == "suppe"

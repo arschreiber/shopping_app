@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import date
 
 from sqlalchemy import select
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
 from ..db import models as m
@@ -34,6 +35,7 @@ class SlotInput:
     time_budget: TimeBudget
     special: SlotSpecial = SlotSpecial.NONE
     pinned: bool = False
+    packed_fresh: bool = False
 
 
 def parse_iso(iso: str) -> tuple[int, int]:
@@ -59,19 +61,31 @@ def get_week(session: Session, iso: str) -> m.Week | None:
 
 
 def get_or_create_week(session: Session, iso: str) -> m.Week:
-    """Eine Woche existiert erst, wenn sie geoeffnet wird - dann mit Standardraster."""
+    """Eine Woche existiert erst, wenn sie geöffnet wird - dann mit Standardraster.
+
+    Öffnen Laptop und Handy dieselbe neue Woche im selben Moment, finden beide sie noch
+    nicht und legen beide an. `ON CONFLICT DO NOTHING` lässt den zweiten dann leer
+    ausgehen statt an UNIQUE(iso_year, iso_week) zu scheitern; er liest die Woche des
+    ersten. Dessen Slots stehen dann schon: SQLite lässt den zweiten Schreiber warten,
+    bis der erste committet hat, und der legt Woche und Slots in einem Zug an.
+    """
     existing = get_week(session, iso)
     if existing is not None:
         return existing
     year, week_no = parse_iso(iso)
-    week = m.Week(iso_year=year, iso_week=week_no, planner_seed=year * 100 + week_no)
-    session.add(week)
-    session.flush()
-    for day in range(7):
-        for meal in (Meal.LUNCH, Meal.DINNER):
-            session.add(m.Slot(week_id=week.id, day=day, meal=meal.value))
-    session.flush()
-    session.refresh(week)
+    created = session.execute(
+        sqlite_insert(m.Week)
+        .values(iso_year=year, iso_week=week_no, planner_seed=year * 100 + week_no)
+        .on_conflict_do_nothing(index_elements=["iso_year", "iso_week"])
+    ).rowcount
+    week = get_week(session, iso)
+    assert week is not None  # gerade angelegt oder vom Gleichzeitigen übernommen
+    if created:
+        for day in range(7):
+            for meal in (Meal.LUNCH, Meal.DINNER):
+                session.add(m.Slot(week_id=week.id, day=day, meal=meal.value))
+        session.flush()
+        session.refresh(week)
     return week
 
 
@@ -84,6 +98,7 @@ def update_grid(
         raise ConflictError(week.version)
 
     by_key = {(slot.day, slot.meal): slot for slot in week.slots}
+    cleared: set[int] = set()
     for row in slots:
         slot = by_key.get((row.day, row.meal.value))
         if slot is None:
@@ -92,12 +107,26 @@ def update_grid(
             raise ValidationError("Esser zu Hause muss zwischen 0 und 2 liegen")
         if not 0 <= row.packed_portions <= 2:
             raise ValidationError("Mitnehm-Portionen müssen zwischen 0 und 2 liegen")
-        slot.eaters_home = row.eaters_home
-        slot.packed_portions = row.packed_portions
+        special, eaters, packed = row.special, row.eaters_home, row.packed_portions
+        if special is SlotSpecial.EATING_OUT:
+            # "auswärts" ist dasselbe wie "niemand da" - ein Zustand, nicht zwei, die
+            # sich nur in der Darstellung unterscheiden.
+            special, eaters, packed = SlotSpecial.NONE, 0, 0
+        slot.eaters_home = eaters
+        slot.packed_portions = packed
+        # Ohne Mitnehm-Portion gibt es nichts frisch mitzunehmen - kein verstecktes "frisch".
+        slot.packed_fresh = row.packed_fresh and packed > 0
         slot.time_budget = row.time_budget.value
-        slot.special = row.special.value
+        slot.special = special.value
         slot.pinned = row.pinned
-        if row.special is SlotSpecial.EATING_OUT and slot.assignment is not None:
+        # Isst hier niemand, fällt das Gericht weg - sonst stünde es unsichtbar hinter der
+        # "niemand da"-Karte und seine Zutaten weiter auf der Einkaufsliste.
+        if eaters + packed == 0 and slot.assignment is not None:
+            slot.assignment = None
+            cleared.add(slot.id)
+    # Reste-Karten, deren Quelle gerade weggefallen ist, gleich mit.
+    for slot in week.slots:
+        if slot.assignment is not None and slot.assignment.leftover_source_slot_id in cleared:
             slot.assignment = None
     week.version += 1
     session.flush()
@@ -133,6 +162,7 @@ def copy_from(
         slot = target_ids[key]
         slot.eaters_home = origin.eaters_home
         slot.packed_portions = origin.packed_portions
+        slot.packed_fresh = origin.packed_fresh
         slot.time_budget = origin.time_budget
         slot.special = origin.special
         slot.pinned = False
@@ -162,7 +192,7 @@ def _copy_assignment(
         slot_id=target.id,
         kind=assignment.kind,
         dish_id=assignment.dish_id,
-        doubled=assignment.doubled,
+        factor=assignment.factor,
         leftover_source_slot_id=source_slot_id,
         portions_used=assignment.portions_used,
         score_snapshot=None,  # Begründung gilt nur für die Woche, in der sie entstand

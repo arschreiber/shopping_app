@@ -133,6 +133,20 @@ def test_preview_works_before_the_dish_is_saved(client):
     assert client.get("/api/dishes").json() == [], "nichts gespeichert"
 
 
+def test_preview_works_for_a_single_portion_dish(client):
+    """Mit den 1-Portionen-Gerichten kam die Vorschau im Formular nicht mit (422)."""
+    rice = article(client, "Reis", **RICE)
+    response = client.post(
+        "/api/nutrition/preview",
+        json={
+            "portions": 1,
+            "ingredients": [{"article_id": rice, "quantity": "100", "unit": "G"}],
+        },
+    )
+    assert response.status_code == 200, response.text
+    assert Decimal(response.json()["per_portion"]["kcal"]) == Decimal(350)
+
+
 def test_nutrition_can_be_edited_and_zero_is_a_value(client):
     """0 kcal heißt "enthält nichts" - nicht "nicht erfasst"."""
     rice = article(client, "Reis", **RICE)

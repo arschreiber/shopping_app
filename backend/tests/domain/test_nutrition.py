@@ -25,9 +25,9 @@ def facts(article_id: int, unit: Unit, *values: int) -> ArticleNutrition:
 
 
 FACTS = {
-    REIS: facts(REIS, Unit.G, 350, 7, 78, 1),
-    OEL: facts(OEL, Unit.ML, 900, 0, 0, 100),
-    ZUCCHINI: facts(ZUCCHINI, Unit.STUECK, 40, 3, 6, 1),
+    REIS: facts(REIS, Unit.G, 350, 78, 1, 7),
+    OEL: facts(OEL, Unit.ML, 900, 0, 100, 0),
+    ZUCCHINI: facts(ZUCCHINI, Unit.STUECK, 40, 6, 1, 3),
     SALZ: ArticleNutrition(SALZ, Unit.G, Nutrients()),
 }
 

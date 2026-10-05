@@ -12,6 +12,7 @@ from ..deps import SessionDep
 from ..mapping import candidate_out, warning_out, week_out
 from ..schemas.common import (
     AssignmentIn,
+    CancelIn,
     CandidateOut,
     GridIn,
     PinIn,
@@ -47,6 +48,7 @@ def put_grid(session: SessionDep, iso: str, payload: GridIn) -> WeekOut:
                 meal=row.meal,
                 eaters_home=row.eaters_home,
                 packed_portions=row.packed_portions,
+                packed_fresh=row.packed_fresh,
                 time_budget=row.time_budget,
                 special=row.special,
                 pinned=row.pinned,
@@ -112,7 +114,7 @@ def put_assignment(
     assignment = Assignment(
         kind=payload.kind,
         dish_id=payload.dish_id,
-        doubled=payload.doubled,
+        factor=payload.factor,
         leftover_source=source,
         portions_used=payload.portions_used,
     )
@@ -131,6 +133,15 @@ def clear_assignment(session: SessionDep, iso: str, day: int, meal: Meal) -> Wee
 @router.put("/{iso}/slots/{day}/{meal}/pin", response_model=WeekOut)
 def set_pin(session: SessionDep, iso: str, day: int, meal: Meal, payload: PinIn) -> WeekOut:
     service.toggle_pin(session, iso, day, meal, pinned=payload.pinned)
+    return _week_response(session, iso)
+
+
+@router.put("/{iso}/slots/{day}/{meal}/cancelled", response_model=WeekOut)
+def set_cancelled(
+    session: SessionDep, iso: str, day: int, meal: Meal, payload: CancelIn
+) -> WeekOut:
+    """Gericht ausgefallen (oder doch gekocht) - zählt dann nicht für die Abwechslung."""
+    service.set_cancelled(session, iso, day, meal, cancelled=payload.cancelled)
     return _week_response(session, iso)
 
 

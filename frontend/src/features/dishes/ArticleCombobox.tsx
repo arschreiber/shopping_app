@@ -6,11 +6,15 @@
  * genau diesem Namen. Es gibt *keine* Zweitnamen: eine Zutat wird über ihren einen
  * Namen identifiziert, sonst weiß nach ein paar Wochen niemand mehr, was wo hängt.
  *
+ * Die Liste kommt vom Server in genau einer Reihenfolge: erst die Namen, die mit der
+ * Eingabe anfangen, dann die, die sie enthalten. Keine Schwelle, keine zweite Sortierung
+ * hier - sonst stünde die Begründung an zwei Stellen.
+ *
  * Tastatur: ↑/↓ wählt, Enter übernimmt, Esc schließt - beim Eintippen von 30-50
  * Gerichten zählt jeder Handgriff (general_plan.md §5 Phase 0).
  */
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import type { Article, Unit } from "../../api/client";
+import type { Article, ArticleSuggestion, Unit } from "../../api/client";
 import { suggestArticles, useSaveArticle } from "../../api/hooks";
 import { IconPlus } from "../../components/Icons";
 import { errorText, useToast } from "../../components/Toast";
@@ -18,7 +22,7 @@ import { UNIT_LABEL } from "../../lib/format";
 
 const UNITS: Unit[] = ["G", "ML", "STUECK"];
 
-type Hit = { article: Article; score: number };
+type Hit = ArticleSuggestion;
 
 export function ArticleCombobox({
   onPick,

@@ -30,6 +30,32 @@ def dish(client, name: str, ingredients: list[dict], portions: int = 3) -> int:
 # ------------------------------------------------------------------------- Vorschläge
 
 
+def test_combobox_lists_prefix_hits_before_substring_hits(client):
+    """Die Reihenfolge ist die ganze Aussage - erst "fängt an mit", dann "enthält"."""
+    for name in ("Reis", "Reibekäse", "Basmatireis", "Vollkornreis", "Nudeln"):
+        article(client, name)
+
+    hits = client.get("/api/articles/suggest", params={"q": "reis"}).json()
+
+    assert [hit["article"]["canonical_name"] for hit in hits] == [
+        "Reis",
+        "Basmatireis",
+        "Vollkornreis",
+    ]
+    assert [hit["kind"] for hit in hits] == ["PREFIX", "CONTAINS", "CONTAINS"]
+
+
+def test_combobox_finds_an_article_after_two_letters(client):
+    """Der Fuzzy-Score kam erst bei halbem Wort über die Schwelle: bis dahin sah es aus,
+    als gäbe es den Artikel nicht - und man legte ihn ein zweites Mal an."""
+    article(client, "Reibekäse")
+    article(client, "Hähnchenbrust")
+
+    hits = client.get("/api/articles/suggest", params={"q": "re"}).json()
+
+    assert [hit["article"]["canonical_name"] for hit in hits] == ["Reibekäse"]
+
+
 def test_parse_suggests_an_existing_article_for_a_compound(client):
     """"Basmatireis" bei vorhandenem "Reis" darf keinen neuen Artikel nahelegen."""
     article(client, "Reis")

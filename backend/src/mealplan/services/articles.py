@@ -8,11 +8,11 @@ from sqlalchemy.orm import Session
 from ..db import models as m
 from ..domain.enums import AliasKind, Unit
 from ..domain.units import CANONICAL_UNITS, DIMENSION_OF, Quantity
-from ..matching.normalize import Suggestion, normalize, rank
+from ..matching.normalize import Suggestion, normalize, search
 from ..matching.normalize import suggest as suggest_names
 
 # Nährwerte je kanonischer Einheit (100 g / 100 ml / 1 Stück), alle optional.
-NUTRITION_FIELDS = ("kcal", "protein_g", "carbs_g", "fat_g")
+NUTRITION_FIELDS = ("kcal", "carbs_g", "fat_g", "protein_g")
 
 
 class ValidationError(ValueError):
@@ -172,16 +172,22 @@ def alias_index(session: Session) -> dict[int, list[str]]:
     return out
 
 
-def suggest(session: Session, query: str, *, limit: int = 8) -> list[tuple[m.Article, float]]:
-    """Combobox: Fuzzy-Vorschläge ueber Namen *und* Aliase."""
+def suggest(session: Session, query: str, *, limit: int = 50) -> list[tuple[m.Article, str]]:
+    """Combobox: erst die Artikel, die mit `query` anfangen, dann die, die ihn enthalten.
+
+    Gesucht wird allein im kanonischen Namen - Zweitnamen gibt es nicht, und der
+    Bring!-Katalogname ist eine Angabe für Bring!, kein zweiter Zutatenname.
+    """
     articles = {a.id: a for a in session.scalars(select(m.Article))}
     if not articles:
         return []
     haystack = {
         article_id: names[0] for article_id, names in name_index(session).items()
     }
-    ranked = rank(query, haystack, limit=limit)
-    return [(articles[article_id], score) for article_id, score in ranked]
+    return [
+        (articles[article_id], kind)
+        for article_id, kind in search(query, haystack, limit=limit)
+    ]
 
 
 def staple_ids(session: Session) -> frozenset[int]:

@@ -7,10 +7,12 @@ import {
   currentIsoWeek,
   formatDay,
   formatRange,
+  hasArrived,
   isoWeekOf,
   mondayOf,
   parseIso,
   shiftIsoWeek,
+  todayIsoDate,
 } from "./dates";
 
 describe("isoWeekOf", () => {
@@ -85,5 +87,22 @@ describe("parseIso", () => {
 describe("currentIsoWeek", () => {
   it("liefert ein gültiges Format", () => {
     expect(currentIsoWeek()).toMatch(/^\d{4}-W\d{2}$/);
+  });
+});
+
+describe("todayIsoDate", () => {
+  it("nimmt den Kalendertag in Ortszeit, auch kurz nach Mitternacht", () => {
+    expect(todayIsoDate(new Date(2026, 9, 5, 0, 30))).toBe("2026-10-05");
+    expect(todayIsoDate(new Date(2026, 0, 9, 23, 59))).toBe("2026-01-09");
+  });
+});
+
+describe("hasArrived", () => {
+  const monday = new Date(2026, 9, 5, 8, 0);
+
+  it("zählt vergangene Tage und heute, aber nicht morgen", () => {
+    expect(hasArrived("2026-10-04", monday)).toBe(true);
+    expect(hasArrived("2026-10-05", monday)).toBe(true);
+    expect(hasArrived("2026-10-06", monday)).toBe(false);
   });
 });

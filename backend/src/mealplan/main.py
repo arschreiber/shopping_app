@@ -32,6 +32,21 @@ from .services.weeks import ConflictError
 LOG = logging.getLogger("mealplan")
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
+# Ohne Cache-Header darf der Browser selbst schätzen, wie lange er eine Datei aufhebt -
+# nach einem Neubau lief dann die alte Oberfläche weiter. Deshalb ausdrücklich:
+# `index.html` & Co. bei jedem Laden nachfragen, die gehashten Assets für immer behalten.
+SHELL_CACHE = {"Cache-Control": "no-cache"}
+ASSET_CACHE = "public, max-age=31536000, immutable"
+
+
+class _HashedAssets(StaticFiles):
+    """Vite hängt jedem Dateinamen einen Inhalts-Hash an: was hier liegt, ändert sich nie."""
+
+    def file_response(self, *args, **kwargs):
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = ASSET_CACHE
+        return response
+
 
 def build_sync(settings: Settings) -> ShoppingListSync:
     """Adapterwahl (ARCHITECTURE.md §5): ohne Zugangsdaten bleibt es der Text-Export."""
@@ -107,7 +122,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # SPA-Fallback auch für tiefe Pfade wie /week/2026-W37. `StaticFiles(html=True)`
         # liefert index.html nur für Verzeichnisse, nicht für beliebige Routen.
         app.mount(
-            "/assets", StaticFiles(directory=STATIC_DIR / "assets"), name="assets"
+            "/assets", _HashedAssets(directory=STATIC_DIR / "assets"), name="assets"
         )
 
         @app.get("/{full_path:path}", include_in_schema=False)
@@ -120,8 +135,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 and candidate.is_file()
                 and candidate.is_relative_to(STATIC_DIR.resolve())
             ):
-                return FileResponse(candidate)
-            return FileResponse(STATIC_DIR / "index.html")
+                return FileResponse(candidate, headers=SHELL_CACHE)
+            return FileResponse(STATIC_DIR / "index.html", headers=SHELL_CACHE)
 
     else:
 

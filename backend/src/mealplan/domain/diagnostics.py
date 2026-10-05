@@ -61,7 +61,8 @@ def _unfilled(plan: Plan, snap: PlanningSnapshot) -> list[PlanWarning]:
 
 
 def _packed_demand(plan: Plan, snap: PlanningSnapshot) -> list[PlanWarning]:
-    """Slot braucht Mitnehm-Portionen, das Gericht kann das nicht."""
+    """Slot braucht Mitnehm-Portionen, das Gericht kann das nicht - oder sie sollen frisch
+    sein, und es stehen Reste drin (das Raster wurde nach der Planung geändert)."""
     out = []
     for slot in snap.slots:
         if slot.packed_portions == 0:
@@ -87,6 +88,15 @@ def _packed_demand(plan: Plan, snap: PlanningSnapshot) -> list[PlanWarning]:
                     slot.key,
                 )
             )
+        elif assignment.kind is AssignmentKind.LEFTOVER and slot.fresh_only:
+            out.append(
+                PlanWarning(
+                    WarningLevel.ERROR,
+                    "fresh_leftover",
+                    f"{slot.key}: soll frisch mitgenommen werden, geplant sind aber Reste",
+                    slot.key,
+                )
+            )
     return out
 
 
@@ -97,7 +107,7 @@ def _effort_mismatch(plan: Plan, snap: PlanningSnapshot) -> list[PlanWarning]:
         if assignment.kind is not AssignmentKind.DISH or assignment.dish_id is None:
             continue
         dish = snap.dish(assignment.dish_id)
-        verdict = eligible(dish, slot, plan.without(slot.key), doubled=assignment.doubled)
+        verdict = eligible(dish, slot, plan.without(slot.key), factor=assignment.factor)
         if not verdict.ok:
             out.append(
                 PlanWarning(

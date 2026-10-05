@@ -16,12 +16,16 @@ import {
   type DishDraft,
 } from "../features/dishes/DishForm";
 import { NutritionCell } from "../features/dishes/NutritionPanel";
-import { AXIS_LABEL, EFFORT_LABEL, stars } from "../lib/format";
+import { AXIS_LABEL, EFFORT_LABEL, FACTOR_WORD, stars } from "../lib/format";
 
 export function DishesRoute() {
   const [query, setQuery] = useState("");
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState<DishDraft>(emptyDraft);
+  // Zählt jedes gespeicherte Gericht hoch und montiert damit das Formular neu. Ein
+  // zurückgesetzter Entwurf allein reicht nicht: Textblock, Kategorie-Eingaben und der
+  // Fokus liegen im Formular selbst und überlebten das Speichern sonst.
+  const [formKey, setFormKey] = useState(0);
   const dishes = useDishes(query || undefined);
   const save = useSaveDish();
   const toast = useToast();
@@ -33,6 +37,8 @@ export function DishesRoute() {
           name: draft.name,
           portions: draft.portions,
           packable: draft.packable,
+          allow_double: draft.allow_double,
+          allow_triple: draft.allow_triple,
           effort: draft.effort,
           suitable_for: draft.suitable_for,
           rating: draft.rating,
@@ -50,14 +56,11 @@ export function DishesRoute() {
         onError: (error) => toast.show(errorText(error), "error"),
         onSuccess: (dish) => {
           toast.show(`„${dish.name}“ gespeichert`, "ok");
-          // Direkt weiter: gleiche Einstellungen behalten, Name und Zutaten leeren.
-          setDraft({
-            ...emptyDraft(),
-            portions: draft.portions,
-            effort: draft.effort,
-            suitable_for: draft.suitable_for,
-            packable: draft.packable,
-          });
+          // "Speichern & nächstes" heißt: leeres Formular. Vorher blieben Aufwand,
+          // Portionen und die Schalter stehen - gedacht als Tipphilfe für ähnliche
+          // Gerichte, gelesen aber als "das Formular hat mich nicht verstanden".
+          setDraft(emptyDraft());
+          setFormKey((current) => current + 1);
         },
       },
     );
@@ -94,6 +97,7 @@ export function DishesRoute() {
       {adding && (
         <div className="card p-4 sm:p-6">
           <DishForm
+            key={formKey}
             draft={draft}
             onChange={setDraft}
             onSubmit={submit}
@@ -162,6 +166,14 @@ function DishTable({ dishes }: { dishes: DishSummary[] }) {
                 <div className="mt-0.5 flex items-center gap-1.5">
                   {!dish.packable && (
                     <span className="text-2xs text-ink-faint">nicht mitnehmbar</span>
+                  )}
+                  {dish.portions === 2 && !dish.allow_double && (
+                    <span className="text-2xs text-ink-faint">nicht verdoppelbar</span>
+                  )}
+                  {dish.portions === 1 && dish.factors.length > 1 && (
+                    <span className="text-2xs text-ink-faint">
+                      auch {dish.factors.slice(1).map((f) => FACTOR_WORD[f]).join(" & ")}
+                    </span>
                   )}
                   {dish.rating && (
                     <span className="text-2xs text-accent">{stars(dish.rating)}</span>

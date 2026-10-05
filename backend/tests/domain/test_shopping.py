@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from conftest import full_week, slot, snapshot
+from conftest import dish, full_week, slot, snapshot
 from mealplan.domain.enums import Meal, SlotSpecial, Unit
 from mealplan.domain.model import Assignment, IngredientSpec, Plan, SlotKey
 from mealplan.domain.shopping import build_shopping_list
@@ -54,9 +54,29 @@ def test_aggregates_across_dishes_and_normalises_units(sample_dishes):
 
 def test_doubling_doubles_the_ingredients(sample_dishes):
     snap = snapshot(full_week(), sample_dishes)
-    plan = Plan().with_(SlotKey.of(0, Meal.DINNER), Assignment.dish(2, doubled=True))
+    plan = Plan().with_(SlotKey.of(0, Meal.DINNER), Assignment.dish(2, factor=2))
     assert lines_by_article(build(plan, snap))[ZUCCHINI].quantity == Decimal("4")
 
+
+
+def test_tripling_a_single_portion_recipe_triples_the_ingredients():
+    snap = snapshot(full_week(), [dish(9, "Ramen", portions=1, allow_triple=True)])
+    plan = Plan().with_(SlotKey.of(0, Meal.DINNER), Assignment.dish(9, factor=3))
+    draft = build_shopping_list(
+        plan,
+        snap,
+        ingredients={9: [IngredientSpec(REIS, Decimal("75"), Unit.G)]},
+        article_units=UNITS,
+    )
+    assert lines_by_article(draft)[REIS].quantity == Decimal("225")
+
+
+def test_a_dish_where_nobody_eats_needs_no_shopping(sample_dishes):
+    slots = list(full_week())
+    slots[1] = slot(0, Meal.DINNER, eaters_home=0)
+    snap = snapshot(slots, sample_dishes)
+    plan = Plan().with_(SlotKey.of(0, Meal.DINNER), Assignment.dish(1))
+    assert build(plan, snap).lines == ()
 
 def test_leftover_slots_need_no_shopping(sample_dishes):
     snap = snapshot(full_week(), sample_dishes)

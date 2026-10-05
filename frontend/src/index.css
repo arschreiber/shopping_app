@@ -92,4 +92,14 @@
   .rule {
     @apply border-t border-line;
   }
+
+  /* Schraffur: hier ist nichts zu planen. Muss sich auf einen Blick vom leeren Slot
+     unterscheiden, der auf ein Gericht wartet - beide sind sonst nur "hell und leer". */
+  .hatch {
+    background-image: repeating-linear-gradient(
+      135deg,
+      theme("colors.line.strong") 0 1px,
+      transparent 1px 7px
+    );
+  }
 }

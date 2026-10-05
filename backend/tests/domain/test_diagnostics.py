@@ -41,6 +41,19 @@ def test_warns_about_a_non_packable_dish_in_a_packing_slot(sample_dishes):
     assert "not_packable" in codes(diagnose(plan, snap))
 
 
+def test_warns_about_leftovers_where_food_should_be_cooked_fresh(sample_dishes):
+    """Raster nach der Planung auf "frisch" umgestellt: die Reste-Karte passt nicht mehr."""
+    slots = list(full_week())
+    slots[3] = slot(1, Meal.DINNER, eaters_home=1, packed_portions=1, packed_fresh=True)
+    snap = snapshot(slots, sample_dishes)
+    monday = SlotKey.of(0, Meal.DINNER)
+    plan = (
+        Plan()
+        .with_(monday, Assignment.dish(2, factor=2))
+        .with_(SlotKey.of(1, Meal.DINNER), Assignment.leftover(monday, 2, 2))
+    )
+    assert "fresh_leftover" in codes(diagnose(plan, snap))
+
 def test_warns_three_times_rice(sample_dishes):
     """Der namensgebende Fall aus general_plan.md §5."""
     snap = snapshot(full_week(), sample_dishes)
@@ -59,7 +72,7 @@ def test_warns_when_effort_no_longer_fits(sample_dishes):
     slots = list(full_week())
     slots[1] = slot(0, Meal.DINNER, time_budget=TimeBudget.LITTLE)
     snap = snapshot(slots, sample_dishes)
-    plan = Plan().with_(SlotKey.of(0, Meal.DINNER), Assignment.dish(6))  # aufwendig
+    plan = Plan().with_(SlotKey.of(0, Meal.DINNER), Assignment.dish(6))  # normal, braucht Zeit
     warnings = [w for w in diagnose(plan, snap) if w.code == "not_eligible"]
     assert warnings and "Aufwand" in warnings[0].text
 

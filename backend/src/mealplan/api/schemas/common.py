@@ -33,9 +33,9 @@ class Dto(BaseModel):
 
 class NutrientsOut(Dto):
     kcal: Decimal
-    protein_g: Decimal
     carbs_g: Decimal
     fat_g: Decimal
+    protein_g: Decimal
 
 
 class DishNutritionOut(Dto):
@@ -62,9 +62,9 @@ class ArticleOut(Dto):
     aliases: list[str] = Field(default_factory=list)
     # Nährwerte je 100 g / 100 ml / Stück - die Bezugsgröße steckt in `unit`.
     kcal: Decimal | None = None
-    protein_g: Decimal | None = None
     carbs_g: Decimal | None = None
     fat_g: Decimal | None = None
+    protein_g: Decimal | None = None
     nutrition_basis: str = ""
 
     @classmethod
@@ -83,9 +83,9 @@ class ArticleOut(Dto):
             is_watchlist=article.is_watchlist,
             aliases=[a.alias for a in article.aliases],
             kcal=trim(article.kcal),
-            protein_g=trim(article.protein_g),
             carbs_g=trim(article.carbs_g),
             fat_g=trim(article.fat_g),
+            protein_g=trim(article.protein_g),
             nutrition_basis=BASIS_LABEL.get(unit, ""),
         )
 
@@ -99,9 +99,9 @@ class ArticleIn(Dto):
     is_watchlist: bool = False
     aliases: list[str] = Field(default_factory=list)
     kcal: Decimal | None = Field(default=None, ge=0)
-    protein_g: Decimal | None = Field(default=None, ge=0)
     carbs_g: Decimal | None = Field(default=None, ge=0)
     fat_g: Decimal | None = Field(default=None, ge=0)
+    protein_g: Decimal | None = Field(default=None, ge=0)
 
 
 class ArticlePatch(Dto):
@@ -113,17 +113,19 @@ class ArticlePatch(Dto):
     is_watchlist: bool | None = None
     aliases: list[str] | None = None
     kcal: Decimal | None = Field(default=None, ge=0)
-    protein_g: Decimal | None = Field(default=None, ge=0)
     carbs_g: Decimal | None = Field(default=None, ge=0)
     fat_g: Decimal | None = Field(default=None, ge=0)
+    protein_g: Decimal | None = Field(default=None, ge=0)
 
 
 class ArticleSuggestion(Dto):
     article: ArticleOut
-    score: float
-    # "COMPOUND" = teilt einen Wortbestandteil ("Basmatireis" / "Reis"),
-    # "FUZZY" = nur ähnlich geschrieben.
+    # Aus der Combobox: "PREFIX" = Name fängt mit der Eingabe an, "CONTAINS" = enthält
+    # sie. Aus dem Parser: "COMPOUND" = teilt einen Wortbestandteil ("Basmatireis" /
+    # "Reis"), "FUZZY" = nur ähnlich geschrieben.
     kind: str = "FUZZY"
+    # Nur die Parser-Vorschläge sind bewertet; die Namenssuche ordnet statt zu punkten.
+    score: float | None = None
     matched_name: str | None = None
 
 
@@ -179,7 +181,9 @@ class DishOut(Dto):
     prep_text: str | None
     note: str | None
     archived: bool
-    can_double: bool
+    allow_double: bool  # am Gericht erlaubt
+    allow_triple: bool
+    factors: list[int]  # tatsächlich erlaubt, z. B. [1, 2] = auch doppelt kochbar
     categories: list[CategoryOut]
     ingredients: list[IngredientOut]
     last_cooked: date | None = None
@@ -192,6 +196,9 @@ class DishSummary(Dto):
     name: str
     portions: int
     packable: bool
+    allow_double: bool
+    allow_triple: bool
+    factors: list[int]
     effort: Effort
     suitable_for: SuitableFor
     rating: int | None
@@ -204,8 +211,10 @@ class DishSummary(Dto):
 
 class DishIn(Dto):
     name: str
-    portions: int = Field(ge=2, le=3)
+    portions: int = Field(ge=1, le=3)
     packable: bool = True
+    allow_double: bool = True
+    allow_triple: bool = False
     effort: Effort = Effort.NORMAL
     suitable_for: SuitableFor = SuitableFor.BOTH
     rating: int | None = Field(default=None, ge=1, le=5)
@@ -217,8 +226,10 @@ class DishIn(Dto):
 
 class DishPatch(Dto):
     name: str | None = None
-    portions: int | None = Field(default=None, ge=2, le=3)
+    portions: int | None = Field(default=None, ge=1, le=3)
     packable: bool | None = None
+    allow_double: bool | None = None
+    allow_triple: bool | None = None
     effort: Effort | None = None
     suitable_for: SuitableFor | None = None
     rating: int | None = Field(default=None, ge=1, le=5)
@@ -230,7 +241,7 @@ class DishPatch(Dto):
 
 
 class NutritionPreviewIn(Dto):
-    portions: int = Field(ge=2, le=3)
+    portions: int = Field(ge=1, le=3)
     ingredients: list[IngredientIn] = Field(default_factory=list)
 
 
@@ -289,13 +300,14 @@ class AssignmentOut(Dto):
     kind: AssignmentKind
     dish_id: int | None = None
     dish_name: str | None = None
-    doubled: bool = False
+    factor: int = 1  # 2 = doppelt, 3 = dreifach gekocht
     portions: int | None = None
     leftover_source_day: int | None = None
     leftover_source_meal: Meal | None = None
     leftover_source_label: str | None = None
     portions_used: int | None = None
     score: ScoreOut | None = None
+    cancelled: bool = False  # ausgefallen: zählt nicht als gekocht
 
 
 class SlotOut(Dto):
@@ -304,6 +316,7 @@ class SlotOut(Dto):
     date: date
     eaters_home: int
     packed_portions: int
+    packed_fresh: bool  # Mitnehm-Portionen frisch gekocht statt vorgekocht
     time_budget: TimeBudget
     special: SlotSpecial
     pinned: bool
@@ -316,6 +329,7 @@ class SlotIn(Dto):
     meal: Meal
     eaters_home: int = Field(ge=0, le=2)
     packed_portions: int = Field(ge=0, le=2)
+    packed_fresh: bool = False
     time_budget: TimeBudget
     special: SlotSpecial = SlotSpecial.NONE
     pinned: bool = False
@@ -358,7 +372,7 @@ class ProposeIn(Dto):
 class AssignmentIn(Dto):
     kind: AssignmentKind
     dish_id: int | None = None
-    doubled: bool = False
+    factor: int = Field(default=1, ge=1, le=3)
     leftover_source_day: int | None = None
     leftover_source_meal: Meal | None = None
     portions_used: int | None = None
@@ -375,6 +389,10 @@ class CandidateOut(Dto):
 
 class PinIn(Dto):
     pinned: bool
+
+
+class CancelIn(Dto):
+    cancelled: bool
 
 
 # ------------------------------------------------------------------------ Einkaufsliste

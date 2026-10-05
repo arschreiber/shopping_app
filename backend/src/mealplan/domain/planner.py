@@ -5,7 +5,9 @@ lokale Suche (paarweise Tauschs + Einzel-Reroll) mit harter Iterationsgrenze. Be
 Gerichten x 14 Slots liegt das deutlich unter einer Sekunde.
 
 Der Zufall ist immer geseeded (`week.planner_seed`): jeder Vorschlag ist reproduzierbar,
-"neu würfeln" ist ein neuer Seed - und Tests sind stabil.
+und Tests sind stabil. Für Abwechslung sorgt ein neuer Seed pro Klick (services/planning.py)
+plus `weights.randomness`: zufällige Zusatzpunkte, die nur beim Auswählen zählen - die
+angezeigte Begründung bleibt die echte Passung.
 """
 
 from __future__ import annotations
@@ -17,6 +19,7 @@ from .eligibility import eligible
 from .enums import AssignmentKind, SlotSpecial, TimeBudget
 from .leftovers import PortionLedger
 from .model import (
+    FACTOR_WORD,
     Assignment,
     Candidate,
     Plan,
@@ -47,7 +50,7 @@ def candidates(
     ledger = ledger if ledger is not None else PortionLedger.of(plan.without(slot.key), snap)
     out: list[Candidate] = []
 
-    for pool in ledger.available_at(slot.key):
+    for pool in [] if slot.fresh_only else ledger.available_at(slot.key):
         dish = snap.dish_or_none(pool.dish_id)
         if dish is None:
             continue
@@ -67,28 +70,33 @@ def candidates(
         )
 
     for dish in snap.dishes:
-        for doubled in (False, True):
-            if doubled and not dish.can_double:
-                continue
-            verdict = eligible(dish, slot, plan, doubled=doubled)
+        rejected = None
+        fits = False
+        for factor in dish.factors:
+            verdict = eligible(dish, slot, plan, factor=factor)
             if not verdict.ok:
-                if include_ineligible and not doubled:
-                    out.append(
-                        Candidate(
-                            assignment=Assignment.dish(dish.id),
-                            label=dish.name,
-                            score=score(dish, slot, plan, snap, ledger=ledger),
-                            warnings=verdict.reasons,
-                        )
-                    )
+                rejected = verdict  # die Faktoren steigen: der größte erklärt am meisten
                 continue
-            breakdown = score(dish, slot, plan, snap, doubled=doubled, ledger=ledger)
+            fits = True
+            breakdown = score(dish, slot, plan, snap, factor=factor, ledger=ledger)
+            word = FACTOR_WORD.get(factor)
             out.append(
                 Candidate(
-                    assignment=Assignment.dish(dish.id, doubled=doubled, score=breakdown),
-                    label=f"{dish.name} (doppelt)" if doubled else dish.name,
+                    assignment=Assignment.dish(dish.id, factor=factor, score=breakdown),
+                    label=f"{dish.name} ({word})" if word else dish.name,
                     score=breakdown,
                     warnings=_warnings(breakdown),
+                )
+            )
+        # "Passt nicht" nur, wenn das Gericht in *keiner* Größe passt: ein Burger für
+        # eine Person ist kein Ausschluss, wenn er doppelt gekocht den Slot deckt.
+        if include_ineligible and not fits and rejected is not None:
+            out.append(
+                Candidate(
+                    assignment=Assignment.dish(dish.id),
+                    label=dish.name,
+                    score=score(dish, slot, plan, snap, ledger=ledger),
+                    warnings=rejected.reasons,
                 )
             )
 
@@ -181,7 +189,7 @@ def propose(
         if not options:
             plan = plan.with_(slot.key, Assignment.empty())
             continue
-        chosen = _pick(options, rng)
+        chosen = _pick(options, rng, snap.weights.randomness)
         plan = plan.with_(slot.key, chosen.assignment)
         _book(chosen.assignment, slot, snap, ledger)
 
@@ -190,25 +198,73 @@ def propose(
     return rescore(plan, snap)
 
 
-def _pick(options: list[Candidate], rng: random.Random) -> Candidate:
-    """Bester Kandidat, mit leichtem Zufall bei praktisch gleichwertigen Optionen."""
-    best = options[0].total
-    tied = [c for c in options if best - c.total <= 0.5]
-    return rng.choice(tied) if len(tied) > 1 else options[0]
+def _pick(options: list[Candidate], rng: random.Random, spread: float) -> Candidate:
+    """Wählt aus den nach Score sortierten Kandidaten.
+
+    Der Zufall entscheidet nur *zwischen frischen Gerichten*: jedes bekommt 0..`spread`
+    Punkte dazu, das höchste gewinnt. Ob stattdessen Reste drankommen, entscheidet der
+    echte Score wie ohne Zufall - sonst würde der Zufall mal Reste verschwenden und mal
+    ein besseres frisches Essen verdrängen.
+    """
+    fresh = [c for c in options if c.assignment.kind is AssignmentKind.DISH]
+    leftover = next((c for c in options if c.assignment.kind is not AssignmentKind.DISH), None)
+    if not fresh:
+        return options[0]
+    if leftover is not None and leftover.total >= fresh[0].total:
+        return leftover
+    return max(fresh, key=lambda c: c.total + rng.uniform(0, spread))
+
+
+def reroll_options(snap: PlanningSnapshot, plan: Plan, key: SlotKey) -> list[Candidate]:
+    """Woraus "neu würfeln" zieht: die besten *verschiedenen* Gerichte.
+
+    Jedes Gericht nur einmal, in seiner bestpassenden Größe - sonst belegen "Lachs" und
+    "Lachs (doppelt)" zwei der Plätze. Und nie das aktuelle Gericht, auch nicht in
+    anderer Größe oder als Reste: wer würfelt, will etwas anderes essen.
+    """
+    current = plan.get(key).dish_id
+    seen: set[tuple] = set()
+    out: list[Candidate] = []
+    for candidate in candidates(snap.slot(key), plan.without(key), snap):
+        assignment = candidate.assignment
+        if current is not None and assignment.dish_id == current:
+            continue
+        identity = (assignment.kind, assignment.dish_id, assignment.leftover_source)
+        if identity in seen:
+            continue
+        seen.add(identity)
+        out.append(candidate)
+        if len(out) == REROLL_POOL:
+            break
+    return out
 
 
 def reroll(snap: PlanningSnapshot, plan: Plan, key: SlotKey, *, seed: int) -> Plan:
-    """"Neu würfeln" für einen Slot: zieht aus den Top-Kandidaten, nie das Gleiche."""
+    """"Neu würfeln" für einen Slot: zieht aus den Top-Kandidaten, nie das Gleiche.
+
+    Zog eine spätere Mahlzeit Reste aus diesem Slot, verliert sie mit dem alten Gericht
+    ihre Quelle (`Plan.without`). Statt sie leer stehen zu lassen, wird sie gleich neu
+    gefüllt - gern mit Resten des neuen Gerichts.
+    """
     rng = random.Random(seed)
-    slot = snap.slot(key)
-    current = plan.get(key)
-    without = plan.without(key)
-    options = candidates(slot, without, snap)
-    alternatives = [c for c in options if not c.assignment.same_choice(current)][:REROLL_POOL]
-    if not alternatives:
+    options = reroll_options(snap, plan, key)
+    if not options:
         return plan
-    chosen = rng.choice(alternatives)
-    return rescore(without.with_(key, chosen.assignment), snap)
+    chosen = rng.choice(options)
+    out = plan.without(key).with_(key, chosen.assignment)
+
+    orphaned = sorted(
+        (k for k, a in plan.items() if k != key and a.leftover_source == key),
+        key=lambda k: k.index,
+    )
+    for orphan in orphaned:
+        slot = snap.slot(orphan)
+        refill = candidates(slot, out, snap)
+        if slot.special is SlotSpecial.FROM_PANTRY:
+            refill = [c for c in refill if c.assignment.kind is AssignmentKind.LEFTOVER]
+        if refill:
+            out = out.with_(orphan, _pick(refill, rng, snap.weights.randomness).assignment)
+    return rescore(out, snap)
 
 
 # ------------------------------------------------------------------------- Lokale Suche
@@ -261,14 +317,14 @@ def _try_swap(plan: Plan, snap: PlanningSnapshot, left: SlotKey, right: SlotKey)
 
     stripped = plan.without(left).without(right)
     left_slot, right_slot = snap.slot(left), snap.slot(right)
-    if not eligible(snap.dish(b.dish_id), left_slot, stripped, doubled=b.doubled).ok:
+    if not eligible(snap.dish(b.dish_id), left_slot, stripped, factor=b.factor).ok:
         return None
-    if not eligible(snap.dish(a.dish_id), right_slot, stripped, doubled=a.doubled).ok:
+    if not eligible(snap.dish(a.dish_id), right_slot, stripped, factor=a.factor).ok:
         return None
 
     candidate = stripped.with_(
-        left, Assignment.dish(b.dish_id, doubled=b.doubled)
-    ).with_(right, Assignment.dish(a.dish_id, doubled=a.doubled))
+        left, Assignment.dish(b.dish_id, factor=b.factor)
+    ).with_(right, Assignment.dish(a.dish_id, factor=a.factor))
     try:
         PortionLedger.of(candidate, snap)
     except ValueError:
@@ -295,7 +351,7 @@ def rescore(plan: Plan, snap: PlanningSnapshot) -> Plan:
                 slot,
                 plan.without(key),
                 snap,
-                doubled=assignment.doubled,
+                factor=assignment.factor,
                 ledger=ledger,
             )
             out = out.with_(key, Assignment(**{**_as_dict(assignment), "score": breakdown}))
@@ -315,7 +371,7 @@ def _as_dict(assignment: Assignment) -> dict:
     return {
         "kind": assignment.kind,
         "dish_id": assignment.dish_id,
-        "doubled": assignment.doubled,
+        "factor": assignment.factor,
         "leftover_source": assignment.leftover_source,
         "portions_used": assignment.portions_used,
         "score": assignment.score,
@@ -331,7 +387,7 @@ def _book(
     if assignment.kind is AssignmentKind.DISH and assignment.dish_id is not None:
         dish = snap.dish(assignment.dish_id)
         ledger.record_cook(
-            slot.key, dish.id, dish.portions_for(doubled=assignment.doubled), slot.demand
+            slot.key, dish.id, dish.portions_for(assignment.factor), slot.demand
         )
     elif assignment.kind is AssignmentKind.LEFTOVER and assignment.leftover_source:
         ledger.record_leftover_use(assignment.leftover_source, assignment.portions_used or 0)

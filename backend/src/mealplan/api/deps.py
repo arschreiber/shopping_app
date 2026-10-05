@@ -30,7 +30,11 @@ def catalog(request: Request) -> BringCatalog:
     return request.app.state.catalog
 
 
-SessionDep = Annotated[Session, Depends(db)]
+# `scope="function"`: committen, *bevor* die Antwort rausgeht. Der Standard ("request")
+# committet erst danach - dann sieht der nächste Request des Clients die Daten der
+# vorigen Antwort womöglich noch nicht, und scheitert der Commit, hat der Client schon
+# sein 200. Genau so entstand der 500 beim Raster einer frisch geöffneten Woche.
+SessionDep = Annotated[Session, Depends(db, scope="function")]
 SettingsDep = Annotated[Settings, Depends(settings)]
 SyncDep = Annotated[ShoppingListSync, Depends(sync_adapter)]
 CatalogDep = Annotated[BringCatalog, Depends(catalog)]

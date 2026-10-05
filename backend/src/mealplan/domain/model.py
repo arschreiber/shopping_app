@@ -69,16 +69,28 @@ class Category:
     name: str
 
 
+def dish_factors(portions: int, allow_double: bool, allow_triple: bool) -> tuple[int, ...]:
+    if portions == 1:
+        return (1, *((2,) if allow_double else ()), *((3,) if allow_triple else ()))
+    if portions == 2 and allow_double:
+        return (1, 2)
+    return (1,)
+
+
 @dataclass(frozen=True, slots=True)
 class DishSpec:
     """Ein Gericht, angereichert um die für die geplante Woche relevanten Fakten."""
 
     id: int
     name: str
-    portions: int  # 2 oder 3
+    portions: int  # 1, 2 oder 3
     packable: bool
     effort: Effort
     suitable_for: SuitableFor
+    # Vervielfachen ist eine Entscheidung des Haushalts, keine reine Rechenfrage: manche
+    # 2-Portionen-Gerichte passen schlicht nicht in Pfanne oder Auflaufform.
+    allow_double: bool = True
+    allow_triple: bool = False  # nur bei 1-Portionen-Gerichten
     rating: int | None = None  # 1..5
     categories: frozenset[Category] = frozenset()
     weeks_since_cooked: int | None = None  # None = noch nie gekocht
@@ -86,12 +98,18 @@ class DishSpec:
     article_ids: frozenset[int] = frozenset()
 
     @property
-    def can_double(self) -> bool:
-        """Nur 2-Portionen-Gerichte sind verdoppelbar (general_plan.md §2)."""
-        return self.portions == 2
+    def factors(self) -> tuple[int, ...]:
+        """Wie oft das Rezept auf einmal gekocht werden darf.
 
-    def portions_for(self, *, doubled: bool) -> int:
-        return self.portions * 2 if doubled else self.portions
+        Ein 1-Portionen-Gericht ist ein Rezept für eine Person; doppelt oder dreifach
+        gekocht deckt es einen normalen Slot. Ein 2-Portionen-Gericht lässt sich höchstens
+        verdoppeln (general_plan.md §2), ein 3-Portionen-Gericht gar nicht - jeweils nur,
+        wenn es am Gericht erlaubt ist.
+        """
+        return dish_factors(self.portions, self.allow_double, self.allow_triple)
+
+    def portions_for(self, factor: int) -> int:
+        return self.portions * factor
 
     def category(self, axis: CategoryAxis) -> frozenset[str]:
         return frozenset(c.name for c in self.categories if c.axis is axis)
@@ -111,8 +129,11 @@ class SlotSpec:
 
     key: SlotKey
     eaters_home: int = 2  # 0..2
-    packed_portions: int = 0  # 0..2, wird hier gekocht und mitgenommen
-    time_budget: TimeBudget = TimeBudget.PLENTY
+    packed_portions: int = 0  # 0..2, wird bei dieser Mahlzeit unterwegs gegessen
+    # Woher die Mitnehm-Portionen kommen: vorgekocht (Standard - bevorzugt Reste) oder
+    # frisch in dieser Mahlzeit gekocht, etwa fürs Abendessen vor einem Termin.
+    packed_fresh: bool = False
+    time_budget: TimeBudget = TimeBudget.NORMAL
     special: SlotSpecial = SlotSpecial.NONE
     pinned: bool = False
 
@@ -122,6 +143,11 @@ class SlotSpec:
         return self.eaters_home + self.packed_portions
 
     @property
+    def fresh_only(self) -> bool:
+        """Hier muss gekocht werden - Reste kommen nicht in Frage."""
+        return self.packed_fresh and self.packed_portions > 0
+
+    @property
     def needs_cooking(self) -> bool:
         if self.special is SlotSpecial.EATING_OUT:
             return False
@@ -129,11 +155,16 @@ class SlotSpec:
 
     @property
     def counts_for_shopping(self) -> bool:
-        """FROM_PANTRY-Slots liefern keine Zutaten für die Einkaufsliste (Plan §4)."""
-        return self.special is SlotSpecial.NONE
+        """FROM_PANTRY-Slots liefern keine Zutaten für die Einkaufsliste (Plan §4), und
+        ein Slot ohne Esser auch dann nicht, wenn noch ein Gericht drinsteht."""
+        return self.special is SlotSpecial.NONE and self.needs_cooking
 
 
 # --------------------------------------------------------------------------- Zuweisung
+
+
+# Wie ein vervielfachtes Gericht heißt - in Kandidatenliste, Begründung und Ablehnung.
+FACTOR_WORD = {2: "doppelt", 3: "dreifach"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -142,16 +173,16 @@ class Assignment:
 
     kind: AssignmentKind = AssignmentKind.EMPTY
     dish_id: int | None = None
-    doubled: bool = False
+    factor: int = 1  # 2 = doppelt, 3 = dreifach gekocht
     leftover_source: SlotKey | None = None
     portions_used: int | None = None
     score: ScoreBreakdown | None = None
 
     @classmethod
     def dish(
-        cls, dish_id: int, *, doubled: bool = False, score: ScoreBreakdown | None = None
+        cls, dish_id: int, *, factor: int = 1, score: ScoreBreakdown | None = None
     ) -> Self:
-        return cls(AssignmentKind.DISH, dish_id=dish_id, doubled=doubled, score=score)
+        return cls(AssignmentKind.DISH, dish_id=dish_id, factor=factor, score=score)
 
     @classmethod
     def leftover(
@@ -198,7 +229,7 @@ class Assignment:
         return (
             self.kind,
             self.dish_id,
-            self.doubled,
+            self.factor,
             self.leftover_source,
             self.portions_used,
         )
@@ -251,7 +282,7 @@ class Eligibility:
 
 @dataclass(frozen=True, slots=True)
 class Candidate:
-    """Ein Vorschlag für einen Slot - Gericht, verdoppeltes Gericht oder Reste."""
+    """Ein Vorschlag für einen Slot - Gericht (auch vervielfacht) oder Reste."""
 
     assignment: Assignment
     label: str
