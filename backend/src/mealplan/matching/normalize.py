@@ -41,6 +41,18 @@ _PRIVATE_LABELS = (
 _NOISE = re.compile(r"[^a-z0-9\s]+")
 _SPACES = re.compile(r"\s+")
 
+# Was ein Angebot gerade *nicht* hat: "Haferdrink ohne Zucker" ist kein Zucker.
+_WITHOUT = re.compile(r"\b(?:ohne|weniger|wenig)\s+(?:zusatz\s+von\s+|zugesetzten?\s+)?[a-z]+")
+# Vorsilben, die nur Sorte oder Verwendung sagen: Speise|kartoffeln sind Kartoffeln,
+# Strauch|tomaten sind Tomaten. Bewusst eine Liste statt "jedes Wort, das auf den
+# Artikelnamen endet" - das machte Brat|kartoffeln zu Kartoffeln und Lichtsch|lauch zu
+# Lauch. Gemessen an den Prospekten vom 13.10.2026: zehn neue Treffer, kein falscher.
+VARIETY_PREFIXES = (
+    "speise", "strauch", "rispen", "kirsch", "cherry", "cocktail", "roma", "fleisch",
+    "bund", "salat", "gemuese", "blatt", "baby", "spitz", "saft", "blut",
+)
+VARIETY_MIN_REST = 3  # "Speiseöl" -> "oel"; kürzer wird nicht getrennt
+
 
 def normalize(text: str) -> str:
     """Kleinschreibung, Umlaut-Faltung, Mengen und Eigenmarken heraus."""
@@ -52,6 +64,27 @@ def normalize(text: str) -> str:
     lowered = lowered.translate(_UMLAUT)
     lowered = _NOISE.sub(" ", lowered)
     return _SPACES.sub(" ", lowered).strip()
+
+
+def match_form(normalized: str) -> str:
+    """Die Form, in der Angebot und Artikel verglichen werden: ohne Verneintes, Sorten-
+    Vorsilben als eigenes Wort ("speisekartoffeln" -> "speise kartoffeln").
+
+    Nur für den Vergleich - der Schlüssel im Zuordnungs-Cache bleibt `normalize`.
+    """
+    text = _WITHOUT.sub(" ", normalized)
+    words: list[str] = []
+    for word in text.split():
+        prefix = next(
+            (
+                p
+                for p in VARIETY_PREFIXES
+                if word.startswith(p) and len(word) - len(p) >= VARIETY_MIN_REST
+            ),
+            None,
+        )
+        words.extend((prefix, word[len(prefix) :]) if prefix else (word,))
+    return " ".join(words)
 
 
 def _pair_score(needle: str, candidate: str) -> tuple[float, float]:
@@ -72,13 +105,13 @@ def best_match(
     query: str, choices: dict[int, list[str]], *, threshold: int = FUZZY_THRESHOLD
 ) -> tuple[int, float] | None:
     """Bester Treffer aus `{id: [name, alias, ...]}` oder None."""
-    needle = normalize(query)
+    needle = match_form(normalize(query))
     if not needle:
         return None
     best: tuple[int, tuple[float, float]] | None = None
     for key, names in choices.items():
         for name in names:
-            candidate = normalize(name)
+            candidate = match_form(normalize(name))
             if not candidate:
                 continue
             score = _pair_score(needle, candidate)

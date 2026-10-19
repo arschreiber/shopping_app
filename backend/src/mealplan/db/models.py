@@ -82,8 +82,24 @@ class Article(Base, TimestampMixin):
     bring_catalog_name: Mapped[str | None] = mapped_column(String(120))
     is_staple: Mapped[bool] = mapped_column(Boolean, default=False)
     is_watchlist: Mapped[bool] = mapped_column(Boolean, default=False)
-    piece_weight_g: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))  # ungenutzt
+    # So viel der Artikel-Einheit ist ein Stück ("1 Avocado ≈ 200 g") - nur bei Gramm- und
+    # Milliliter-Artikeln. Macht Angebote pro Stück mit Richt- und Normalpreis vergleichbar.
+    piece_size: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
     note: Mapped[str | None] = mapped_column(Text)
+    # Richtpreis: Angebote darüber zählen für diesen Artikel nicht. In der Einheit des
+    # Artikels - €/kg bei G, €/l bei ML, €/Stück bei STUECK. NULL = jedes Angebot zählt.
+    max_unit_price: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
+    # Angebote zählen erst ab dieser Packungsgröße, in der Einheit des Artikels
+    # ("Heidelbeeren ab 400 g"). NULL = jede Packung.
+    min_offer_amount: Mapped[Decimal | None] = mapped_column(Numeric(10, 3))
+    # Normalpreis, so wie man einkauft: "250 g für 1,29 €" - Menge in der Einheit des
+    # Artikels. Daraus wird der Grundpreis gerechnet (domain/unit_price.py). Beide oder
+    # keins; unabhängig vom Richtpreis (Eigenmarke vs. Markenangebot).
+    regular_pack_amount: Mapped[Decimal | None] = mapped_column(Numeric(10, 3))
+    regular_pack_price: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
+    # NULL = Menge in der Einheit des Artikels; "STUECK" = Anzahl Stück ("1 Stück für
+    # 0,79 €"), umgerechnet über `piece_size`.
+    regular_pack_unit: Mapped[str | None] = mapped_column(String(10))
 
     # Nährwerte, alle optional. Die Bezugsgröße ergibt sich aus `unit` und braucht
     # deshalb kein eigenes Feld: je 100 g, je 100 ml oder je 1 Stück. Ohne Werte bleibt
@@ -134,6 +150,9 @@ class Dish(Base, TimestampMixin):
     name: Mapped[str] = mapped_column(String(160), unique=True)
     portions: Mapped[int] = mapped_column(Integer, default=3)
     packable: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Nicht aufwärmbar (Salat mit Dressing, knusprig Gebratenes ...): Reste taugen nichts,
+    # also nur in einer Größe kochen, die genau aufgeht (domain/eligibility.py).
+    reheatable: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("1"))
     # 2er-Gerichte: auf 4 verdoppeln; 1er-Gerichte: doppelt bzw. dreifach kochen.
     # 3er-Gerichte werden nie vervielfacht (domain/model.py `DishSpec.factors`).
     allow_double: Mapped[bool] = mapped_column(
@@ -394,11 +413,19 @@ class Setting(Base):
 
 
 class Store(Base):
+    """Ein Laden, in dem eingekauft wird - mit oder ohne Angebote.
+
+    `offer_source` NULL heißt: keine Angebote abrufen (Allfrisch veröffentlicht seine
+    nur in der Edeka-App). Die PLZ gehört zum *Laden*, nicht zum Haushalt: Korbunio
+    findet einen Rewe-Markt nur über dessen eigene PLZ.
+    """
+
     __tablename__ = "store"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(80), unique=True)
     chain: Mapped[str] = mapped_column(_enum(Chain))
+    postal_code: Mapped[str | None] = mapped_column(String(5))
     market_id: Mapped[str | None] = mapped_column(String(60))
     offer_source: Mapped[str | None] = mapped_column(String(40))
     is_primary: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -428,6 +455,12 @@ class OfferSnapshot(Base):
     status: Mapped[str] = mapped_column(_enum(SyncStatus))
     offer_count: Mapped[int] = mapped_column(Integer, default=0)
     raw_payload: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    # Welchen Markt die Quelle tatsächlich genommen hat ("REWE Heinrichstr. 37") -
+    # Korbunio wählt bei Edeka selbst, das soll man sehen können.
+    market_label: Mapped[str | None] = mapped_column(String(200))
+    market_url: Mapped[str | None] = mapped_column(String(500))  # Angebotsseite des Markts
+    source_detail: Mapped[str | None] = mapped_column(String(60))  # "offiziell", "Marktguru"
+    error: Mapped[str | None] = mapped_column(Text)
 
     offers: Mapped[list[Offer]] = relationship(
         back_populates="snapshot", cascade="all, delete-orphan"
@@ -447,6 +480,14 @@ class Offer(Base):
     price: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
     old_price: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
     base_price: Mapped[str | None] = mapped_column(String(60))
+    pack: Mapped[str | None] = mapped_column(String(60))
+    category: Mapped[str | None] = mapped_column(String(60))
+    description: Mapped[str | None] = mapped_column(String(300))  # Prospekttext
+    image_url: Mapped[str | None] = mapped_column(String(500))
+    source_url: Mapped[str | None] = mapped_column(String(500))  # das Angebot bei der Quelle
+    # Grundpreis, beim Speichern vergleichbar gemacht (domain/unit_price.py)
+    unit_price: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
+    unit_price_unit: Mapped[str | None] = mapped_column(String(10))  # kg | l | Stück
     valid_from: Mapped[date | None] = mapped_column(Date)
     valid_to: Mapped[date | None] = mapped_column(Date)
     image_path: Mapped[str | None] = mapped_column(String(200))

@@ -3,18 +3,18 @@
  * Reste-Portionen sind sichtbar anders (gestrichelte Kante, eigenes Icon), weil sie
  * fachlich etwas anderes sind: schon gekauft, schon gekocht. Ein ausgefallenes Gericht
  * bleibt stehen, aber durchgestrichen - so sieht man, warum es nicht als gekocht zählt.
- * Eine kleine Uhr unten rechts heißt "wenig Zeit": dort kommen nur schnelle Gerichte hin.
+ * Unten rechts die Zeit (TimeMark): Uhr bei wenig Zeit, Reste-Schale bei keiner.
  */
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import type { Slot, Warning } from "../../api/client";
 import {
-  IconClock,
   IconClose,
   IconDice,
   IconLeftover,
   IconPin,
   IconPlus,
 } from "../../components/Icons";
+import { TimeMark } from "./TimeMark";
 
 export function SlotCard({
   slot,
@@ -40,7 +40,7 @@ export function SlotCard({
   const assignment = slot.assignment;
   const isLeftover = assignment?.kind === "LEFTOVER";
   const cancelled = assignment?.cancelled ?? false;
-  const little = slot.time_budget === "LITTLE";
+  const timed = slot.time_budget !== "NORMAL";
   // Auf der Karte steht *ob* etwas nicht stimmt, nicht wie viel es kostet. Die Zahl ohne
   // ihre Begruendung liest sich als Note - und eine Woche voller "-11,0" entmutigt, ohne
   // etwas zu erklaeren. Der Score gehoert dorthin, wo auch seine Beitraege stehen: ins
@@ -114,7 +114,11 @@ export function SlotCard({
           <span className="m-auto flex items-center gap-1 text-xs text-ink-faint
                            group-hover:text-accent">
             <IconPlus className="h-3.5 w-3.5" />
-            {slot.special === "FROM_PANTRY" ? "aus Vorhandenem" : "wählen"}
+            {slot.special === "FROM_PANTRY"
+              ? "aus Vorhandenem"
+              : slot.time_budget === "NONE"
+                ? "Reste wählen"
+                : "wählen"}
           </span>
         ) : (
           <>
@@ -141,9 +145,9 @@ export function SlotCard({
                   {cancelled && <span className="text-ink-muted">ausgefallen</span>}
                 </>
               )}
-              {(little || level) && (
+              {(timed || level) && (
                 <span className="ml-auto flex items-center gap-1">
-                  {little && <LittleTime />}
+                  <TimeMark budget={slot.time_budget} />
                   {level && (
                     <span
                       className={[
@@ -160,9 +164,9 @@ export function SlotCard({
         )}
       </button>
 
-      {empty && little && (
+      {empty && timed && (
         <span className="pointer-events-none absolute bottom-1.5 right-2">
-          <LittleTime />
+          <TimeMark budget={slot.time_budget} />
         </span>
       )}
 
@@ -228,10 +232,3 @@ export function SlotCard({
   );
 }
 
-function LittleTime() {
-  return (
-    <span role="img" aria-label="wenig Zeit" title="wenig Zeit - nur schnelle Gerichte oder Reste">
-      <IconClock className="h-3 w-3 text-ink-muted" />
-    </span>
-  );
-}

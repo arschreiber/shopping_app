@@ -40,7 +40,13 @@ class PlannerWeights:
     waste_per_portion: float = -4.0  # Reste, die kein Slot mehr braucht
     surplus_usable_per_portion: float = 1.5  # Überschuss, den ein spaeterer Slot brauchen kann
     leftover_covers_demand: float = 10.0  # eine Reste-*Zuweisung* deckt diesen Slot
-    leftover_assignment: float = 7.0  # Reste-Karte statt neu kochen (kein Einkauf)
+    # Seit der Planer die ganze Woche auf einmal optimiert, findet er jede Reste-Kette -
+    # mit +7 obendrauf war fast jede zweite Mahlzeit Reste. Reste lohnen sich vor allem,
+    # wo einer allein isst oder die Zeit knapp ist; dafür gibt es eigene Gewichte.
+    leftover_assignment: float = 0.0  # Reste-Karte statt neu kochen (kein Einkauf)
+    leftover_alone: float = 8.0  # ... wenn einer allein isst
+    leftover_little_time: float = 15.0  # ... bei wenig Zeit
+    leftover_second_meal: float = -6.0  # zweite Reste-Mahlzeit aus demselben Topf
     doubling: float = -2.0  # verdoppeln ist Mehraufwand
 
     # --- Zufall beim Auto-Vorschlag: jedes frische Gericht bekommt beim Auswählen 0..Z

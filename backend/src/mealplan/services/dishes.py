@@ -55,6 +55,7 @@ def create_dish(
     name: str,
     portions: int,
     packable: bool = True,
+    reheatable: bool = True,
     allow_double: bool = True,
     allow_triple: bool = False,
     effort: Effort = Effort.NORMAL,
@@ -86,6 +87,7 @@ def create_dish(
             existing.id,
             portions=portions,
             packable=packable,
+            reheatable=reheatable,
             allow_double=allow_double,
             allow_triple=allow_triple,
             effort=effort,
@@ -101,6 +103,7 @@ def create_dish(
         name=cleaned,
         portions=portions,
         packable=packable,
+        reheatable=reheatable,
         allow_double=allow_double,
         allow_triple=allow_triple,
         effort=effort.value,
@@ -128,7 +131,8 @@ def update_dish(session: Session, dish_id: int, **changes) -> m.Dish:
     if (name := changes.pop("name", None)) is not None:
         dish.name = _rename_target(session, dish, name)
     for field in (
-        "packable", "allow_double", "allow_triple", "rating", "prep_text", "note", "archived",
+        "packable", "reheatable", "allow_double", "allow_triple", "rating", "prep_text",
+        "note", "archived",
     ):
         if (value := changes.pop(field, None)) is not None:
             setattr(dish, field, value.strip() if isinstance(value, str) else value)

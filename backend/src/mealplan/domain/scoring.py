@@ -11,6 +11,7 @@ from __future__ import annotations
 from decimal import Decimal
 
 from .enums import CategoryAxis as Axis
+from .enums import TimeBudget
 from .leftovers import LeftoverPool, PortionLedger
 from .model import (
     Contribution,
@@ -20,6 +21,7 @@ from .model import (
     ScoreBreakdown,
     SlotSpec,
 )
+from .weights import PlannerWeights
 
 _AXIS_LABEL = {Axis.SIDE: "Beilage", Axis.PROTEIN: "Protein", Axis.CUISINE: "Küche"}
 
@@ -40,7 +42,10 @@ def score(
     *,
     factor: int = 1,
     ledger: PortionLedger | None = None,
+    final: bool = False,
 ) -> ScoreBreakdown:
+    """`final`: der Plan ist fertig, `ledger` kennt alle Reste-Mahlzeiten - "übrig" heißt
+    dann, was wirklich niemand isst, nicht was vielleicht noch jemand essen könnte."""
     w = snap.weights
     ledger = ledger if ledger is not None else _ledger_for(plan, snap)
     out: list[Contribution] = [Contribution("base", 0.0, "")]
@@ -49,7 +54,7 @@ def score(
     out.extend(_rotation(dish, w))
     out.extend(_rating(dish, w))
     out.extend(_offers(dish, w))
-    out.extend(_portions(dish, slot, snap, factor=factor, ledger=ledger))
+    out.extend(_portions(dish, slot, snap, factor=factor, ledger=ledger, final=final))
 
     # Mehraufwand ist nur der große Topf. Ein 1-Portionen-Rezept doppelt zu kochen ist
     # sein normaler Gebrauch - bestraft, würde es gegen jedes 2er-Gericht verlieren.
@@ -63,8 +68,15 @@ def score_leftover(
     pool: LeftoverPool,
     slot: SlotSpec,
     snap: PlanningSnapshot,
+    *,
+    repeat: bool = False,
 ) -> ScoreBreakdown:
-    """Reste-Karte als Kandidat: kein Einkauf, kein Kochen, keine Verschwendung."""
+    """Reste-Karte als Kandidat: kein Einkauf, kein Kochen, keine Verschwendung.
+
+    Am meisten lohnen sich Reste, wo einer allein isst - für eine Person kocht man
+    ungern - oder die Zeit knapp ist. `repeat`: aus demselben Topf gab es schon eine
+    Reste-Mahlzeit; das darf vorkommen (verdoppelt), soll aber nicht die Regel sein.
+    """
     w = snap.weights
     dish = snap.dish(pool.dish_id)
     out: list[Contribution] = [
@@ -75,6 +87,18 @@ def score_leftover(
             f"Reste von {pool.source} - kein Einkauf, kein Kochen",
         ),
     ]
+    if slot.demand == 1:
+        out.append(Contribution("leftover_alone", w.leftover_alone, "einer isst allein"))
+    if slot.time_budget is TimeBudget.LITTLE:
+        out.append(Contribution("leftover_little_time", w.leftover_little_time, "wenig Zeit"))
+    if repeat:
+        out.append(
+            Contribution(
+                "leftover_second_meal",
+                w.leftover_second_meal,
+                "schon die zweite Reste-Mahlzeit aus diesem Topf",
+            )
+        )
     covered = min(pool.portions, slot.demand)
     if covered:
         out.append(
@@ -99,6 +123,26 @@ def score_leftover(
 # ------------------------------------------------------------------------- Einzelregeln
 
 
+VARIETY_AXES = (Axis.SIDE, Axis.PROTEIN, Axis.CUISINE)
+
+
+def variety_weight(axis: Axis, distance: int, w: PlannerWeights) -> float:
+    """Abzug für eine geteilte Kategorie auf `axis` im Abstand `distance` (in Mahlzeiten).
+
+    Näher = strenger: innerhalb von `variety_span_slots` von `adjacent` linear auf
+    `same_week` ausblenden. Auch der Optimierer rechnet damit (optimizer.py).
+    """
+    adjacent, same_week = {
+        Axis.SIDE: (w.same_side_adjacent, w.same_side_same_week),
+        Axis.PROTEIN: (w.same_protein_adjacent, w.same_protein_same_week),
+        Axis.CUISINE: (w.same_cuisine_adjacent, w.same_cuisine_same_week),
+    }[axis]
+    if distance > w.variety_span_slots:
+        return same_week
+    span = w.variety_span_slots + 1
+    return min(adjacent * (span - distance) / span, same_week)
+
+
 def _variety(
     dish: DishSpec, slot: SlotSpec, plan: Plan, snap: PlanningSnapshot
 ) -> list[Contribution]:
@@ -119,22 +163,12 @@ def _variety(
         if other is None or other.id == dish.id:
             continue
         distance = abs(other_key.index - slot.key.index)
-        near = distance <= w.variety_span_slots
 
-        for axis, (adjacent_weight, week_weight) in (
-            (Axis.SIDE, (w.same_side_adjacent, w.same_side_same_week)),
-            (Axis.PROTEIN, (w.same_protein_adjacent, w.same_protein_same_week)),
-            (Axis.CUISINE, (w.same_cuisine_adjacent, w.same_cuisine_same_week)),
-        ):
+        for axis in VARIETY_AXES:
             shared = dish.category(axis) & other.category(axis)
             if not shared:
                 continue
-            weight = week_weight
-            if near:
-                # Näher = strenger: von `adjacent` linear auf `week` ausblenden.
-                span = w.variety_span_slots + 1
-                weight = adjacent_weight * (span - distance) / span
-                weight = min(weight, week_weight)
+            weight = variety_weight(axis, distance, w)
             where = "am selben Tag" if other_key.day == slot.key.day else f"{other_key}"
             conflicts.setdefault(axis, []).append(
                 (weight, f"gleiche{'s' if axis is Axis.PROTEIN else ''} "
@@ -195,6 +229,7 @@ def _portions(
     *,
     factor: int,
     ledger: PortionLedger,
+    final: bool = False,
 ) -> list[Contribution]:
     w = snap.weights
     produced = dish.portions_for(factor)
@@ -206,7 +241,11 @@ def _portions(
     if surplus < 0:
         return []
 
-    wasted = ledger.would_waste(slot.key, surplus)
+    wasted = (
+        min(max(ledger.remaining(slot.key), 0), surplus)
+        if final
+        else ledger.would_waste(slot.key, surplus)
+    )
     used = surplus - wasted
     out: list[Contribution] = []
     if used > 0:

@@ -150,3 +150,17 @@ def test_all_reasons_are_reported_not_just_the_first():
         Plan(),
     )
     assert len(verdict.reasons) == 3
+
+
+def test_what_cannot_be_reheated_must_come_out_even():
+    """Nicht aufwärmbar: Reste taugen nichts, also nur eine Größe, die genau aufgeht."""
+    crispy = dish(1, "Knusper-Tofu", portions=3, reheatable=False)
+    three_for_two = eligible(crispy, slot(0, Meal.DINNER), Plan())
+    assert not three_for_two.ok
+    assert "nicht aufwärmbar - 1 Portion bliebe übrig" in three_for_two.reasons
+    assert eligible(crispy, slot(0, Meal.DINNER, packed_portions=1), Plan()).ok
+
+    bowl = dish(2, "Bowl", portions=2, reheatable=False)
+    assert eligible(bowl, slot(0, Meal.DINNER), Plan()).ok
+    assert not eligible(bowl, slot(0, Meal.DINNER), Plan(), factor=2).ok
+    assert not eligible(bowl, slot(1, Meal.LUNCH, eaters_home=1), Plan()).ok

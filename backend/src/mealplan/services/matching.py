@@ -68,16 +68,18 @@ def match_snapshot(session: Session, snapshot: m.OfferSnapshot) -> list[MatchOut
         article_id, score = hit if hit else (None, 0.0)
         out.append(MatchOutcome(offer.id, article_id, score, MatchDecider.FUZZY))
         if cached is None:
-            session.add(
-                m.OfferMatch(
-                    normalized_offer_name=key,
-                    store_id=snapshot.store_id,
-                    article_id=article_id,
-                    score=score,
-                    decided_by=MatchDecider.FUZZY.value,
-                    confirmed=False,
-                )
+            # Gleich in den Cache: ein Prospekt hat oft mehrere Angebote, die nach dem
+            # Normalisieren gleich heißen ("Mineralwasser" medium und still) - die Zeile
+            # gibt es pro Name und Laden nur einmal.
+            cache[key] = m.OfferMatch(
+                normalized_offer_name=key,
+                store_id=snapshot.store_id,
+                article_id=article_id,
+                score=score,
+                decided_by=MatchDecider.FUZZY.value,
+                confirmed=False,
             )
+            session.add(cache[key])
         else:
             cached.article_id = article_id
             cached.score = score

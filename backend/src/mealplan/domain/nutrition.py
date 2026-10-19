@@ -4,7 +4,7 @@ Zwei Entscheidungen tragen den Rest:
 
 1. **Die Bezugsgröße steckt schon in der Einheit.** Jeder Artikel hat genau eine
    kanonische Einheit, also gilt je 100 g, je 100 ml oder je 1 Stück - ohne ein
-   zusätzliches Feld und ohne `piece_weight_g`: eine Zucchini trägt ihre Werte je Stück.
+   zusätzliches Feld und ohne `piece_size`: eine Zucchini trägt ihre Werte je Stück.
 
 2. **Lücken werden gemeldet, nicht verschwiegen.** Fehlt bei einer Zutat die Angabe oder
    hat die Zeile keine Menge ("Olivenöl nach Bedarf"), ist die Summe unvollständig. Eine

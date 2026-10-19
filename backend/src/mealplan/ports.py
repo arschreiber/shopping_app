@@ -72,12 +72,26 @@ class ShoppingListSync(Protocol):
 class RawOffer:
     raw_name: str
     price: Decimal | None = None
-    old_price: Decimal | None = None
+    old_price: Decimal | None = None  # nur, wenn die Quelle einen höheren "statt"-Preis nennt
     brand: str | None = None
-    base_price: str | None = None
+    base_price: str | None = None  # "5,08 €/kg"
+    pack: str | None = None  # "250 g"
+    category: str | None = None
     valid_from: date | None = None
     valid_to: date | None = None
     image_url: str | None = None
+    description: str | None = None  # Prospekttext: "versch. Sorten, 3+1 gratis"
+    source_url: str | None = None  # das Angebot bei der Quelle, falls sie es verlinkt
+
+
+@dataclass(frozen=True, slots=True)
+class StoreRef:
+    """Was eine Angebotsquelle über einen Laden wissen muss."""
+
+    id: int
+    chain: str
+    postal_code: str
+    market_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,6 +103,9 @@ class OfferSnapshotData:
     ok: bool
     raw_payload: dict | None = None
     error: str | None = None
+    market_label: str | None = None
+    market_url: str | None = None  # Angebotsseite des Markts
+    source_detail: str | None = None  # woher die Quelle es hat: "offiziell", "Marktguru"
 
     @property
     def usable(self) -> bool:
@@ -99,11 +116,12 @@ class OfferSnapshotData:
 
 @runtime_checkable
 class OfferSource(Protocol):
+    """Liefert den *ganzen* aktuellen Prospekt eines Ladens. Zugeordnet wird bei uns -
+    die Wortsuche der Quellen findet "Schafskäse" nicht, wenn man "Hirtenkäse" sucht."""
+
     name: str
 
-    def fetch(
-        self, store_id: int, market_id: str | None, queries: list[str]
-    ) -> OfferSnapshotData: ...
+    def fetch(self, store: StoreRef) -> OfferSnapshotData: ...
 
 
 # ------------------------------------------------------------------------ Bring!-Katalog

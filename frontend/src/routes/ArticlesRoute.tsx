@@ -9,7 +9,7 @@ import { suggestCatalog, useArticles, useMergeArticles, useSaveArticle } from ".
 import { IconCheck, IconPlus } from "../components/Icons";
 import { EmptyState, Segmented, Spinner, Toggle } from "../components/Primitives";
 import { errorText, useToast } from "../components/Toast";
-import { UNIT_LABEL, formatNumber } from "../lib/format";
+import { PRICE_UNIT, UNIT_LABEL, formatNumber, formatUnitPrice } from "../lib/format";
 
 const UNITS: Unit[] = ["G", "ML", "STUECK"];
 
@@ -195,6 +195,32 @@ export function ArticlesRoute() {
   );
 }
 
+function decimalOrNull(value: string | number): string | null {
+  const text = String(value).trim().replace(",", ".");
+  return text === "" ? null : text;
+}
+
+/** "250 g für 1,29 €" -> "5,16 €/kg"; "1 Stück für 0,79 €" bei 200 g -> "3,95 €/kg" */
+function packPreview(
+  amount: string | number,
+  price: string | number,
+  unit: Unit,
+  inPieces: boolean,
+  pieceSize: string | number,
+): string | null {
+  const number = (value: string | number) => Number(String(value).replace(",", "."));
+  let quantity = number(amount);
+  const euros = number(price);
+  if (!(quantity > 0) || !(euros > 0)) return null;
+  if (inPieces && unit !== "STUECK") {
+    const size = number(pieceSize);
+    if (!(size > 0)) return null;
+    quantity *= size;
+  }
+  const perUnit = (euros * (unit === "STUECK" ? 1 : 1000)) / quantity;
+  return formatUnitPrice(perUnit, PRICE_UNIT[unit]);
+}
+
 function ArticleEditor({
   article,
   onDone,
@@ -210,6 +236,22 @@ function ArticleEditor({
   const [staple, setStaple] = useState(article?.is_staple ?? false);
   const [watchlist, setWatchlist] = useState(article?.is_watchlist ?? false);
   const [aliases, setAliases] = useState((article?.aliases ?? []).join(", "));
+  const [target, setTarget] = useState(article?.max_unit_price ?? "");
+  const [minAmount, setMinAmount] = useState(article?.min_offer_amount ?? "");
+  const [regularAmount, setRegularAmount] = useState(article?.regular_pack_amount ?? "");
+  const [regularPrice, setRegularPrice] = useState(article?.regular_pack_price ?? "");
+  const [regularInPieces, setRegularInPieces] = useState(article?.regular_pack_unit === "STUECK");
+  const [pieceSize, setPieceSize] = useState(article?.piece_size ?? "");
+  // Stückgewicht und "pro Stück" gibt es nur bei Gramm- und Milliliter-Artikeln.
+  const weighed = unit !== "STUECK";
+  // Nur die Vorschau beim Tippen - gespeichert und verglichen wird der Wert des Servers.
+  const regularPreview = packPreview(
+    regularAmount,
+    regularPrice,
+    unit,
+    weighed && regularInPieces,
+    pieceSize,
+  );
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [nutrition, setNutrition] = useState({
     kcal: article?.kcal ?? "",
@@ -245,6 +287,14 @@ function ArticleEditor({
                 .split(",")
                 .map((entry) => entry.trim())
                 .filter(Boolean),
+              // Leer heißt: jedes Angebot zählt, egal wie teuer.
+              max_unit_price: decimalOrNull(target),
+              // Leer heißt: jede Packungsgröße zählt.
+              min_offer_amount: decimalOrNull(minAmount),
+              regular_pack_amount: decimalOrNull(regularAmount),
+              regular_pack_price: decimalOrNull(regularPrice),
+              regular_pack_unit: weighed && regularInPieces ? "STUECK" : null,
+              piece_size: weighed ? decimalOrNull(pieceSize) : null,
               // Leeres Feld heißt "nicht erfasst", eine 0 heißt "enthält nichts davon".
               ...Object.fromEntries(
                 Object.entries(nutrition).map(([field, value]) => [
@@ -329,6 +379,133 @@ function ArticleEditor({
           className="field"
         />
       </div>
+
+      <fieldset className="rounded border border-line bg-sunken/40 px-2.5 py-2">
+        <legend className="label px-1">
+          Preise{" "}
+          <span className="font-normal normal-case tracking-normal text-ink-faint">
+            (optional – für die Angebote)
+          </span>
+        </legend>
+        <div className="flex flex-wrap gap-x-8 gap-y-3">
+          {weighed && (
+            <div className="flex flex-col gap-1">
+              <span className="text-xs text-ink-muted">
+                Stückgewicht – für Angebote pro Stück (Avocado, Gurke)
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="text-sm text-ink-muted">1 Stück ≈</span>
+                <input
+                  type="number"
+                  min={0}
+                  step="any"
+                  inputMode="decimal"
+                  value={String(pieceSize)}
+                  onChange={(event) => setPieceSize(event.target.value)}
+                  placeholder="–"
+                  aria-label={`Stückgewicht in ${UNIT_LABEL[unit]}`}
+                  className="field w-20 py-1 text-right"
+                />
+                <span className="text-sm text-ink-muted">{UNIT_LABEL[unit]}</span>
+              </span>
+            </div>
+          )}
+          <div className="flex flex-col gap-1">
+            <span className="text-xs text-ink-muted">
+              Normalpreis – was ihr ohne Angebot zahlt, z. B. für die Eigenmarke
+            </span>
+            <span className="flex flex-wrap items-center gap-1.5">
+              <input
+                type="number"
+                min={0}
+                step="any"
+                inputMode="decimal"
+                value={String(regularAmount)}
+                onChange={(event) => setRegularAmount(event.target.value)}
+                placeholder="–"
+                aria-label={`Normalpreis: Menge in ${
+                  weighed && regularInPieces ? "Stück" : UNIT_LABEL[unit]
+                }`}
+                className="field w-20 py-1 text-right"
+              />
+              {weighed ? (
+                <Segmented
+                  size="xs"
+                  label="Normalpreis: Menge in"
+                  value={regularInPieces ? "piece" : "unit"}
+                  options={[
+                    { value: "unit", label: UNIT_LABEL[unit] },
+                    { value: "piece", label: "Stück" },
+                  ]}
+                  onChange={(choice) => setRegularInPieces(choice === "piece")}
+                />
+              ) : (
+                <span className="text-sm text-ink-muted">{UNIT_LABEL[unit]}</span>
+              )}
+              <span className="text-sm text-ink-muted">für</span>
+              <input
+                type="number"
+                min={0}
+                step="0.01"
+                inputMode="decimal"
+                value={String(regularPrice)}
+                onChange={(event) => setRegularPrice(event.target.value)}
+                placeholder="–"
+                aria-label="Normalpreis: Preis in €"
+                className="field w-20 py-1 text-right"
+              />
+              <span className="text-sm text-ink-muted">€</span>
+              {regularPreview && (
+                <span className="text-xs text-ink-faint">= {regularPreview}</span>
+              )}
+              {weighed && regularInPieces && !regularPreview && regularAmount !== "" && (
+                <span className="text-xs text-warn">braucht ein Stückgewicht</span>
+              )}
+            </span>
+          </div>
+          <div className="flex flex-col gap-1">
+            <span className="text-xs text-ink-muted">
+              Richtpreis – Angebote darüber zählen nicht (leer: jedes zählt)
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="text-sm text-ink-muted">bis</span>
+              <input
+                id="article-target-price"
+                aria-label={`Richtpreis in €/${PRICE_UNIT[unit]}`}
+                type="number"
+                min={0}
+                step="0.01"
+                inputMode="decimal"
+                value={String(target)}
+                onChange={(event) => setTarget(event.target.value)}
+                placeholder="–"
+                className="field w-24 py-1 text-right"
+              />
+              <span className="text-sm text-ink-muted">€/{PRICE_UNIT[unit]}</span>
+            </span>
+          </div>
+          <div className="flex flex-col gap-1">
+            <span className="text-xs text-ink-muted">
+              Mindestpackung – kleinere Angebote zählen nicht (leer: jede)
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="text-sm text-ink-muted">ab</span>
+              <input
+                aria-label={`Mindestpackung in ${UNIT_LABEL[unit]}`}
+                type="number"
+                min={0}
+                step="any"
+                inputMode="decimal"
+                value={String(minAmount)}
+                onChange={(event) => setMinAmount(event.target.value)}
+                placeholder="–"
+                className="field w-20 py-1 text-right"
+              />
+              <span className="text-sm text-ink-muted">{UNIT_LABEL[unit]}</span>
+            </span>
+          </div>
+        </div>
+      </fieldset>
 
       <fieldset className="rounded border border-line bg-sunken/40 px-2.5 py-2">
         <legend className="label px-1">

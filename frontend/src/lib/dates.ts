@@ -81,3 +81,10 @@ export function todayIsoDate(now: Date = new Date()): string {
 export function hasArrived(isoDate: string, now: Date = new Date()): boolean {
   return isoDate <= todayIsoDate(now);
 }
+
+/** "2026-10-10" -> "Sa 10.10." - für "gültig bis" an Angeboten. */
+export function formatIsoDay(isoDate: string): string {
+  const [year, month, day] = isoDate.split("-").map(Number);
+  const date = new Date(year, month - 1, day);
+  return `${DAY_SHORT[(date.getDay() + 6) % 7]} ${day}.${month}.`;
+}

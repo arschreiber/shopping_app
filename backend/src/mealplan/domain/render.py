@@ -10,7 +10,7 @@ from __future__ import annotations
 from .enums import AssignmentKind, SlotSpecial, TimeBudget
 from .model import Plan, PlanningSnapshot, PlanWarning
 
-_BUDGET = {TimeBudget.NORMAL: "normal", TimeBudget.LITTLE: "wenig"}
+_BUDGET = {TimeBudget.NORMAL: "normal", TimeBudget.LITTLE: "wenig", TimeBudget.NONE: "keine"}
 _SPECIAL = {
     SlotSpecial.NONE: "",
     SlotSpecial.EATING_OUT: " [auswärts]",

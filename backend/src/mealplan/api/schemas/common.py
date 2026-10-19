@@ -4,12 +4,14 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from ...domain.enums import (
     AssignmentKind,
     CategoryAxis,
+    Chain,
     Effort,
     ItemSource,
     ListStatus,
@@ -60,6 +62,17 @@ class ArticleOut(Dto):
     is_staple: bool
     is_watchlist: bool
     aliases: list[str] = Field(default_factory=list)
+    # Richtpreis in €/kg (G), €/l (ML) oder €/Stück - darüber zählt kein Angebot.
+    max_unit_price: Decimal | None = None
+    # Angebote erst ab dieser Packungsgröße (in `unit`) - kleinere zählen nicht
+    min_offer_amount: Decimal | None = None
+    # Normalpreis, wie eingekauft: Menge (in `unit`) und Preis - und der Grundpreis daraus
+    regular_pack_amount: Decimal | None = None
+    regular_pack_price: Decimal | None = None
+    regular_pack_unit: Literal["STUECK"] | None = None  # None = in der Einheit des Artikels
+    regular_unit_price: Decimal | None = None
+    # So viel der Artikel-Einheit ist ein Stück ("1 Avocado ≈ 200 g") - nur bei G und ML
+    piece_size: Decimal | None = None
     # Nährwerte je 100 g / 100 ml / Stück - die Bezugsgröße steckt in `unit`.
     kcal: Decimal | None = None
     carbs_g: Decimal | None = None
@@ -70,6 +83,7 @@ class ArticleOut(Dto):
     @classmethod
     def of(cls, article) -> ArticleOut:
         from ...domain.nutrition import BASIS_LABEL
+        from ...domain.unit_price import pack_unit_price
         from ...domain.units import trim
 
         unit = Unit(article.unit)
@@ -82,6 +96,19 @@ class ArticleOut(Dto):
             is_staple=article.is_staple,
             is_watchlist=article.is_watchlist,
             aliases=[a.alias for a in article.aliases],
+            max_unit_price=article.max_unit_price,
+            min_offer_amount=trim(article.min_offer_amount),
+            regular_pack_amount=trim(article.regular_pack_amount),
+            regular_pack_price=article.regular_pack_price,
+            regular_pack_unit=article.regular_pack_unit,
+            regular_unit_price=pack_unit_price(
+                article.regular_pack_amount,
+                article.regular_pack_price,
+                unit,
+                in_pieces=article.regular_pack_unit == Unit.STUECK.value,
+                piece_size=article.piece_size,
+            ),
+            piece_size=trim(article.piece_size),
             kcal=trim(article.kcal),
             carbs_g=trim(article.carbs_g),
             fat_g=trim(article.fat_g),
@@ -98,6 +125,12 @@ class ArticleIn(Dto):
     is_staple: bool = False
     is_watchlist: bool = False
     aliases: list[str] = Field(default_factory=list)
+    max_unit_price: Decimal | None = Field(default=None, gt=0, max_digits=10, decimal_places=2)
+    min_offer_amount: Decimal | None = Field(default=None, gt=0, max_digits=10, decimal_places=3)
+    regular_pack_amount: Decimal | None = Field(default=None, gt=0, max_digits=10, decimal_places=3)
+    regular_pack_price: Decimal | None = Field(default=None, gt=0, max_digits=10, decimal_places=2)
+    regular_pack_unit: Literal["STUECK"] | None = None
+    piece_size: Decimal | None = Field(default=None, gt=0, max_digits=10, decimal_places=2)
     kcal: Decimal | None = Field(default=None, ge=0)
     carbs_g: Decimal | None = Field(default=None, ge=0)
     fat_g: Decimal | None = Field(default=None, ge=0)
@@ -112,6 +145,12 @@ class ArticlePatch(Dto):
     is_staple: bool | None = None
     is_watchlist: bool | None = None
     aliases: list[str] | None = None
+    max_unit_price: Decimal | None = Field(default=None, gt=0, max_digits=10, decimal_places=2)
+    min_offer_amount: Decimal | None = Field(default=None, gt=0, max_digits=10, decimal_places=3)
+    regular_pack_amount: Decimal | None = Field(default=None, gt=0, max_digits=10, decimal_places=3)
+    regular_pack_price: Decimal | None = Field(default=None, gt=0, max_digits=10, decimal_places=2)
+    regular_pack_unit: Literal["STUECK"] | None = None
+    piece_size: Decimal | None = Field(default=None, gt=0, max_digits=10, decimal_places=2)
     kcal: Decimal | None = Field(default=None, ge=0)
     carbs_g: Decimal | None = Field(default=None, ge=0)
     fat_g: Decimal | None = Field(default=None, ge=0)
@@ -175,6 +214,7 @@ class DishOut(Dto):
     name: str
     portions: int
     packable: bool
+    reheatable: bool
     effort: Effort
     suitable_for: SuitableFor
     rating: int | None
@@ -196,6 +236,7 @@ class DishSummary(Dto):
     name: str
     portions: int
     packable: bool
+    reheatable: bool
     allow_double: bool
     allow_triple: bool
     factors: list[int]
@@ -213,6 +254,7 @@ class DishIn(Dto):
     name: str
     portions: int = Field(ge=1, le=3)
     packable: bool = True
+    reheatable: bool = True
     allow_double: bool = True
     allow_triple: bool = False
     effort: Effort = Effort.NORMAL
@@ -228,6 +270,7 @@ class DishPatch(Dto):
     name: str | None = None
     portions: int | None = Field(default=None, ge=1, le=3)
     packable: bool | None = None
+    reheatable: bool | None = None
     allow_double: bool | None = None
     allow_triple: bool | None = None
     effort: Effort | None = None
@@ -333,6 +376,30 @@ class SlotIn(Dto):
     time_budget: TimeBudget
     special: SlotSpecial = SlotSpecial.NONE
     pinned: bool = False
+
+
+class StandardSlotIn(Dto):
+    """Eine Mahlzeit der Standardwoche - das Raster ohne Plan, Pins und Sonderfälle."""
+
+    day: int = Field(ge=0, le=6)
+    meal: Meal
+    eaters_home: int = Field(ge=0, le=2)
+    packed_portions: int = Field(ge=0, le=2)
+    packed_fresh: bool = False
+    time_budget: TimeBudget = TimeBudget.NORMAL
+
+
+class StandardSlotOut(Dto):
+    day: int
+    meal: Meal
+    eaters_home: int
+    packed_portions: int
+    packed_fresh: bool
+    time_budget: TimeBudget
+
+
+class StandardWeekIn(Dto):
+    slots: list[StandardSlotIn]
 
 
 class WarningOut(Dto):
@@ -449,15 +516,85 @@ class PushOut(Dto):
 
 class OfferOut(Dto):
     offer_id: int
+    store_id: int
     store_name: str
     raw_name: str
     brand: str | None
+    pack: str | None
+    category: str | None
     price: Decimal | None
     old_price: Decimal | None
+    base_price: str | None
     savings: Decimal | None
+    valid_from: str | None
     valid_to: str | None
     article_id: int | None
     article_name: str | None
+    match_confirmed: bool  # False = automatisch zugeordnet, noch nicht bestätigt
+    # Zum Nachprüfen der Quelle
+    description: str | None = None
+    image_url: str | None = None
+    source_url: str | None = None
+    market_label: str | None = None
+    market_url: str | None = None
+    source_detail: str | None = None  # "offiziell" (Händlerseite) oder "Marktguru"
+    fetched_at: datetime | None = None
+    # Richtpreis des Artikels und das Urteil über dieses Angebot
+    unit_price: Decimal | None = None  # Grundpreis in unit_price_unit
+    unit_price_unit: str | None = None  # kg | l | Stück
+    target_price: Decimal | None = None
+    price_verdict: str | None = None  # None (kein Richtpreis) | ok | too_expensive | unknown
+    # Mindestpackung des Artikels und das Urteil über die Packung dieses Angebots
+    offer_amount: Decimal | None = None  # Packungsgröße in der Einheit des Artikels
+    min_offer_amount: Decimal | None = None
+    pack_verdict: str | None = None  # None (keine Grenze) | ok | too_small | unknown
+    counts: bool  # zugeordnet, nicht über dem Richtpreis, Packung groß genug
+    # Normalpreis des Artikels und der Abstand des Angebots dazu (negativ = günstiger)
+    regular_unit_price: Decimal | None = None
+    normal_diff: Decimal | None = None
+    normal_diff_percent: int | None = None
+    article_price_unit: str | None = None  # Einheit von Richt- und Normalpreis
+    compared_price: Decimal | None = None  # das Angebot in dieser Einheit
+    compared_via_piece: bool = False  # über das Stückgewicht umgerechnet (Schätzwert)
+    piece_size: Decimal | None = None
+
+
+class StoreIn(Dto):
+    name: str = Field(min_length=1, max_length=80)
+    chain: Chain
+    postal_code: str | None = None
+    market_id: str | None = None
+    offers_enabled: bool = False
+    is_primary: bool = False
+
+
+class StorePatch(Dto):
+    name: str | None = Field(default=None, min_length=1, max_length=80)
+    chain: Chain | None = None
+    postal_code: str | None = None  # "" löscht
+    market_id: str | None = None  # "" löscht
+    offers_enabled: bool | None = None
+    is_primary: bool | None = None
+
+
+class StoreOut(Dto):
+    id: int
+    name: str
+    chain: Chain
+    postal_code: str | None
+    market_id: str | None
+    offers_enabled: bool
+    is_primary: bool
+
+
+class StoreStatusOut(Dto):
+    store_id: int
+    store_name: str
+    last_fetched_at: datetime | None
+    last_status: SyncStatus | None
+    last_error: str | None
+    market_label: str | None  # welchen Markt die Quelle tatsächlich genommen hat
+    current_count: int
 
 
 class OfferMatchIn(Dto):

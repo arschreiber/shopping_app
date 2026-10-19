@@ -11,13 +11,19 @@ from ...services import bring_sync as sync_service
 from ...services import matching as matching_service
 from ...services import offers as offers_service
 from ...services import settings_store
-from ..deps import CatalogDep, SessionDep, SyncDep
+from ...services import stores as stores_service
+from ...services import weeks as weeks_service
+from ...services.articles import ValidationError
+from ..deps import CatalogDep, OfferSourceDep, SessionDep, SyncDep
 from ..schemas.common import (
     HealthOut,
     OfferMatchIn,
     OfferOut,
     SettingsIn,
     SettingsOut,
+    StandardSlotOut,
+    StandardWeekIn,
+    StoreStatusOut,
     SyncRunOut,
 )
 
@@ -64,9 +70,57 @@ def put_settings(session: SessionDep, payload: SettingsIn) -> SettingsOut:
     return SettingsOut.model_validate(settings_store.all_settings(session))
 
 
+@router.get("/settings/standard-week", response_model=list[StandardSlotOut])
+def get_standard_week(session: SessionDep) -> list[StandardSlotOut]:
+    return [StandardSlotOut.model_validate(slot) for slot in weeks_service.standard_week(session)]
+
+
+@router.put("/settings/standard-week", response_model=list[StandardSlotOut])
+def put_standard_week(session: SessionDep, payload: StandardWeekIn) -> list[StandardSlotOut]:
+    """Das Raster, mit dem neue Wochen anfangen. Fehlende Mahlzeiten: zwei zu Hause."""
+    saved = weeks_service.save_standard_week(
+        session,
+        [
+            weeks_service.StandardSlot(
+                day=row.day,
+                meal=row.meal,
+                eaters_home=row.eaters_home,
+                packed_portions=row.packed_portions,
+                packed_fresh=row.packed_fresh,
+                time_budget=row.time_budget,
+            )
+            for row in payload.slots
+        ],
+    )
+    return [StandardSlotOut.model_validate(slot) for slot in saved]
+
+
 @router.get("/offers", response_model=list[OfferOut])
 def offers(session: SessionDep) -> list[OfferOut]:
     return [OfferOut.model_validate(view) for view in offers_service.current_offers(session)]
+
+
+@router.get("/offers/status", response_model=list[StoreStatusOut])
+def offer_status(session: SessionDep) -> list[StoreStatusOut]:
+    """Pro Laden: letzter Abruf, welcher Markt, wie viele Angebote noch gelten."""
+    return [StoreStatusOut.model_validate(row) for row in offers_service.store_status(session)]
+
+
+@router.post("/offers/fetch", response_model=list[StoreStatusOut])
+def fetch_offers(session: SessionDep, source: OfferSourceDep) -> list[StoreStatusOut]:
+    """Der Knopf "Angebote abrufen" - derselbe Ablauf wie der Abruf Mo/Do früh.
+
+    Synchron: ein Abruf dauert ein paar Sekunden pro Laden (beim ersten Mal für eine PLZ
+    bis zu 20), und das Ergebnis ist genau das, worauf man wartet.
+    """
+    if source is None:
+        raise ValidationError("Keine Angebotsquelle konfiguriert (MEALPLAN_KORBUNIO_URL)")
+    if not stores_service.offer_stores(session):
+        raise ValidationError(
+            "Noch kein Laden mit Angeboten - unter Einstellungen → Läden einen anlegen"
+        )
+    offers_service.fetch_all(session, source)
+    return [StoreStatusOut.model_validate(row) for row in offers_service.store_status(session)]
 
 
 @router.get("/offers/unmatched", response_model=list[OfferOut])

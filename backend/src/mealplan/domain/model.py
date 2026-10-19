@@ -91,6 +91,7 @@ class DishSpec:
     # 2-Portionen-Gerichte passen schlicht nicht in Pfanne oder Auflaufform.
     allow_double: bool = True
     allow_triple: bool = False  # nur bei 1-Portionen-Gerichten
+    reheatable: bool = True  # False: es darf nichts übrig bleiben
     rating: int | None = None  # 1..5
     categories: frozenset[Category] = frozenset()
     weeks_since_cooked: int | None = None  # None = noch nie gekocht

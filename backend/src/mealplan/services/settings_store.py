@@ -17,6 +17,7 @@ from ..domain.weights import DEFAULT_WEIGHTS, PlannerWeights
 KEY_WEIGHTS = "planner_weights"
 KEY_HOUSEHOLD = "household"
 KEY_SHOPPING = "shopping"
+KEY_STANDARD_WEEK = "standard_week"  # Raster, mit dem neue Wochen anfangen (weeks.py)
 
 DEFAULT_HOUSEHOLD: dict[str, Any] = {"members": ["Person A", "Person B"]}
 DEFAULT_SHOPPING: dict[str, Any] = {

@@ -23,10 +23,12 @@ class Effort(StrEnum):
 
 
 class TimeBudget(StrEnum):
-    """Zeit für eine Mahlzeit. Bei `LITTLE` kommen nur schnelle Gerichte oder Reste."""
+    """Zeit für eine Mahlzeit. Bei `LITTLE` kommen nur schnelle Gerichte oder Reste, bei
+    `NONE` nur Reste - dort wird nicht gekocht."""
 
     NORMAL = "NORMAL"
     LITTLE = "LITTLE"
+    NONE = "NONE"
 
 
 class SuitableFor(StrEnum):
@@ -115,3 +117,4 @@ class Chain(StrEnum):
     ALDI_NORD = "ALDI_NORD"
     NETTO_MD = "NETTO_MD"
     REWE = "REWE"
+    COMBI = "COMBI"  # Bünting-Gruppe, Angebote über den regionalen marktguru-Prospekt

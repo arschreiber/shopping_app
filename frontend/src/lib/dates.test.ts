@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
   currentIsoWeek,
   formatDay,
+  formatIsoDay,
   formatRange,
   hasArrived,
   isoWeekOf,
@@ -104,5 +105,12 @@ describe("hasArrived", () => {
     expect(hasArrived("2026-10-04", monday)).toBe(true);
     expect(hasArrived("2026-10-05", monday)).toBe(true);
     expect(hasArrived("2026-10-06", monday)).toBe(false);
+  });
+});
+
+describe("formatIsoDay", () => {
+  it("nennt Wochentag und Datum ohne Jahr", () => {
+    expect(formatIsoDay("2026-10-10")).toBe("Sa 10.10.");
+    expect(formatIsoDay("2026-10-05")).toBe("Mo 5.10.");
   });
 });

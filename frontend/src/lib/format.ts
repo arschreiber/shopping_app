@@ -16,11 +16,20 @@ export const EFFORT_HINT: Record<Effort, string> = {
 export const TIME_LABEL: Record<TimeBudget, string> = {
   NORMAL: "normale Zeit",
   LITTLE: "wenig Zeit",
+  NONE: "keine Zeit",
+};
+
+/** Was die Zeit für den Planer heißt - als Tooltip und im Raster-Menü. */
+export const TIME_HINT: Record<TimeBudget, string> = {
+  NORMAL: "jedes Gericht",
+  LITTLE: "nur schnelle Gerichte oder Reste",
+  NONE: "hier wird nicht gekocht - nur Reste",
 };
 
 export const TIME_SHORT: Record<TimeBudget, string> = {
   NORMAL: "normal",
   LITTLE: "wenig",
+  NONE: "keine",
 };
 
 /** Wie oft ein Gericht auf einmal gekocht wird - dieselben Wörter wie im Planer. */
@@ -73,6 +82,50 @@ export function formatQuantity(
 
 export function formatScore(total: number): string {
   return `${total > 0 ? "+" : ""}${total.toFixed(1).replace(".", ",")}`;
+}
+
+/** In welcher Einheit ein Richtpreis gilt: die Grundpreis-Einheit zur Artikel-Einheit. */
+export const PRICE_UNIT: Record<Unit, string> = {
+  G: "kg",
+  KG: "kg",
+  ML: "l",
+  L: "l",
+  STUECK: "Stück",
+};
+
+/** "5,96 €/kg" */
+export function formatUnitPrice(
+  value: string | number | null | undefined,
+  unit: string | null | undefined,
+): string {
+  if (value === null || value === undefined || !unit) return "";
+  return `${formatEuro(value)}/${unit}`;
+}
+
+// Einheit, in der Richt- und Normalpreis gelten -> Einheit der Menge
+const AMOUNT_UNIT: Record<string, string> = { kg: "g", l: "ml", Stück: "Stück" };
+
+/** Packungsgröße in der Einheit des Artikels: ("300", "kg") -> "300 g". */
+export function formatPackAmount(
+  amount: string | number | null | undefined,
+  priceUnit: string | null | undefined,
+): string {
+  if (amount === null || amount === undefined || !priceUnit) return "";
+  return `${formatNumber(amount)} ${AMOUNT_UNIT[priceUnit] ?? priceUnit}`;
+}
+
+/** "−0,80 €/kg ggü. normal (−16 %)" - negativ heißt: günstiger als euer Normalpreis. */
+export function formatNormalDiff(
+  diff: string | number | null | undefined,
+  percent: number | null | undefined,
+  unit: string | null | undefined,
+): string {
+  if (diff === null || diff === undefined || !unit) return "";
+  const value = Number(diff);
+  if (value === 0) return "wie normal";
+  const sign = value < 0 ? "−" : "+";
+  const share = percent === null || percent === undefined ? "" : ` (${sign}${Math.abs(percent)} %)`;
+  return `${sign}${formatUnitPrice(Math.abs(value), unit)} ggü. normal${share}`;
 }
 
 export function formatEuro(value: string | number | null | undefined): string {
