@@ -102,6 +102,12 @@ export const IconBook = ({ className }: Props) => (
   </Svg>
 );
 
+export const IconBox = ({ className }: Props) => (
+  <Svg className={className}>
+    <path d="M2.5 5 8 2.5 13.5 5v6L8 13.5 2.5 11V5ZM2.5 5 8 7.5 13.5 5M8 7.5v6" />
+  </Svg>
+);
+
 export const IconTag = ({ className }: Props) => (
   <Svg className={className}>
     <path d="M8.5 2.5H13v4.5l-6 6L2 8l6.5-5.5Z" />
