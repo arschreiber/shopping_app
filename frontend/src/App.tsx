@@ -1,7 +1,7 @@
 /** App-Shell: Navigation, Routen, Fehlerhinweise. */
 import { NavLink, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { useHealth } from "./api/hooks";
-import { IconBook, IconCart, IconGear, IconTag } from "./components/Icons";
+import { IconBook, IconBox, IconCart, IconGear, IconTag } from "./components/Icons";
 import { ArticlesRoute } from "./routes/ArticlesRoute";
 import { DishEditRoute } from "./routes/DishEditRoute";
 import { DishesRoute } from "./routes/DishesRoute";
@@ -103,7 +103,10 @@ function TopBar() {
   );
 }
 
-/** Am Handy unten: die vier Wege, die im Alltag zählen. */
+/**
+ * Am Handy unten: dieselben Ziele wie die Kopfzeile am Desktop. Die Einstellungen
+ * erreicht man über das Zahnrad oben, das auch am Handy sichtbar bleibt.
+ */
 function BottomNav() {
   const iso = useCurrentIso();
   const itemClass = ({ isActive }: { isActive: boolean }) =>
@@ -129,9 +132,13 @@ function BottomNav() {
         <IconBook />
         Gerichte
       </NavLink>
-      <NavLink to="/settings" className={itemClass}>
-        <IconGear />
-        Mehr
+      <NavLink to="/articles" className={itemClass}>
+        <IconBox />
+        Artikel
+      </NavLink>
+      <NavLink to="/offers" className={itemClass}>
+        <IconTag />
+        Angebote
       </NavLink>
     </nav>
   );
