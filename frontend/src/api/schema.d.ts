@@ -512,6 +512,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/stores": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Stores */
+        get: operations["list_stores_api_stores_get"];
+        put?: never;
+        /** Create Store */
+        post: operations["create_store_api_stores_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/stores/{store_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Store */
+        delete: operations["delete_store_api_stores__store_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Store */
+        patch: operations["update_store_api_stores__store_id__patch"];
+        trace?: never;
+    };
     "/api/health": {
         parameters: {
             query?: never;
@@ -570,6 +606,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/settings/standard-week": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Standard Week */
+        get: operations["get_standard_week_api_settings_standard_week_get"];
+        /**
+         * Put Standard Week
+         * @description Das Raster, mit dem neue Wochen anfangen. Fehlende Mahlzeiten: zwei zu Hause.
+         */
+        put: operations["put_standard_week_api_settings_standard_week_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/offers": {
         parameters: {
             query?: never;
@@ -581,6 +638,49 @@ export interface paths {
         get: operations["offers_api_offers_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/offers/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Offer Status
+         * @description Pro Laden: letzter Abruf, welcher Markt, wie viele Angebote noch gelten.
+         */
+        get: operations["offer_status_api_offers_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/offers/fetch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Fetch Offers
+         * @description Der Knopf "Angebote abrufen" - derselbe Ablauf wie der Abruf Mo/Do früh.
+         *
+         *     Synchron: ein Abruf dauert ein paar Sekunden pro Laden (beim ersten Mal für eine PLZ
+         *     bis zu 20), und das Ergebnis ist genau das, worauf man wartet.
+         */
+        post: operations["fetch_offers_api_offers_fetch_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -676,6 +776,18 @@ export interface components {
             is_watchlist: boolean;
             /** Aliases */
             aliases?: string[];
+            /** Max Unit Price */
+            max_unit_price?: number | string | null;
+            /** Min Offer Amount */
+            min_offer_amount?: number | string | null;
+            /** Regular Pack Amount */
+            regular_pack_amount?: number | string | null;
+            /** Regular Pack Price */
+            regular_pack_price?: number | string | null;
+            /** Regular Pack Unit */
+            regular_pack_unit?: "STUECK" | null;
+            /** Piece Size */
+            piece_size?: number | string | null;
             /** Kcal */
             kcal?: number | string | null;
             /** Carbs G */
@@ -702,6 +814,20 @@ export interface components {
             is_watchlist: boolean;
             /** Aliases */
             aliases?: string[];
+            /** Max Unit Price */
+            max_unit_price?: string | null;
+            /** Min Offer Amount */
+            min_offer_amount?: string | null;
+            /** Regular Pack Amount */
+            regular_pack_amount?: string | null;
+            /** Regular Pack Price */
+            regular_pack_price?: string | null;
+            /** Regular Pack Unit */
+            regular_pack_unit?: "STUECK" | null;
+            /** Regular Unit Price */
+            regular_unit_price?: string | null;
+            /** Piece Size */
+            piece_size?: string | null;
             /** Kcal */
             kcal?: string | null;
             /** Carbs G */
@@ -731,6 +857,18 @@ export interface components {
             is_watchlist?: boolean | null;
             /** Aliases */
             aliases?: string[] | null;
+            /** Max Unit Price */
+            max_unit_price?: number | string | null;
+            /** Min Offer Amount */
+            min_offer_amount?: number | string | null;
+            /** Regular Pack Amount */
+            regular_pack_amount?: number | string | null;
+            /** Regular Pack Price */
+            regular_pack_price?: number | string | null;
+            /** Regular Pack Unit */
+            regular_pack_unit?: "STUECK" | null;
+            /** Piece Size */
+            piece_size?: number | string | null;
             /** Kcal */
             kcal?: number | string | null;
             /** Carbs G */
@@ -854,6 +992,11 @@ export interface components {
              */
             usage: number;
         };
+        /**
+         * Chain
+         * @enum {string}
+         */
+        Chain: "EDEKA" | "ALDI_NORD" | "NETTO_MD" | "REWE" | "COMBI";
         /** ContributionOut */
         ContributionOut: {
             /** Rule */
@@ -891,6 +1034,11 @@ export interface components {
              * @default true
              */
             packable: boolean;
+            /**
+             * Reheatable
+             * @default true
+             */
+            reheatable: boolean;
             /**
              * Allow Double
              * @default true
@@ -946,6 +1094,8 @@ export interface components {
             portions: number;
             /** Packable */
             packable: boolean;
+            /** Reheatable */
+            reheatable: boolean;
             effort: components["schemas"]["Effort"];
             suitable_for: components["schemas"]["SuitableFor"];
             /** Rating */
@@ -980,6 +1130,8 @@ export interface components {
             portions?: number | null;
             /** Packable */
             packable?: boolean | null;
+            /** Reheatable */
+            reheatable?: boolean | null;
             /** Allow Double */
             allow_double?: boolean | null;
             /** Allow Triple */
@@ -1009,6 +1161,8 @@ export interface components {
             portions: number;
             /** Packable */
             packable: boolean;
+            /** Reheatable */
+            reheatable: boolean;
             /** Allow Double */
             allow_double: boolean;
             /** Allow Triple */
@@ -1147,24 +1301,83 @@ export interface components {
         OfferOut: {
             /** Offer Id */
             offer_id: number;
+            /** Store Id */
+            store_id: number;
             /** Store Name */
             store_name: string;
             /** Raw Name */
             raw_name: string;
             /** Brand */
             brand: string | null;
+            /** Pack */
+            pack: string | null;
+            /** Category */
+            category: string | null;
             /** Price */
             price: string | null;
             /** Old Price */
             old_price: string | null;
+            /** Base Price */
+            base_price: string | null;
             /** Savings */
             savings: string | null;
+            /** Valid From */
+            valid_from: string | null;
             /** Valid To */
             valid_to: string | null;
             /** Article Id */
             article_id: number | null;
             /** Article Name */
             article_name: string | null;
+            /** Match Confirmed */
+            match_confirmed: boolean;
+            /** Description */
+            description?: string | null;
+            /** Image Url */
+            image_url?: string | null;
+            /** Source Url */
+            source_url?: string | null;
+            /** Market Label */
+            market_label?: string | null;
+            /** Market Url */
+            market_url?: string | null;
+            /** Source Detail */
+            source_detail?: string | null;
+            /** Fetched At */
+            fetched_at?: string | null;
+            /** Unit Price */
+            unit_price?: string | null;
+            /** Unit Price Unit */
+            unit_price_unit?: string | null;
+            /** Target Price */
+            target_price?: string | null;
+            /** Price Verdict */
+            price_verdict?: string | null;
+            /** Offer Amount */
+            offer_amount?: string | null;
+            /** Min Offer Amount */
+            min_offer_amount?: string | null;
+            /** Pack Verdict */
+            pack_verdict?: string | null;
+            /** Counts */
+            counts: boolean;
+            /** Regular Unit Price */
+            regular_unit_price?: string | null;
+            /** Normal Diff */
+            normal_diff?: string | null;
+            /** Normal Diff Percent */
+            normal_diff_percent?: number | null;
+            /** Article Price Unit */
+            article_price_unit?: string | null;
+            /** Compared Price */
+            compared_price?: string | null;
+            /**
+             * Compared Via Piece
+             * @default false
+             */
+            compared_via_piece: boolean;
+            /** Piece Size */
+            piece_size?: string | null;
         };
         /** ParseIn */
         ParseIn: {
@@ -1374,6 +1587,110 @@ export interface components {
          */
         SlotSpecial: "NONE" | "EATING_OUT" | "FROM_PANTRY";
         /**
+         * StandardSlotIn
+         * @description Eine Mahlzeit der Standardwoche - das Raster ohne Plan, Pins und Sonderfälle.
+         */
+        StandardSlotIn: {
+            /** Day */
+            day: number;
+            meal: components["schemas"]["Meal"];
+            /** Eaters Home */
+            eaters_home: number;
+            /** Packed Portions */
+            packed_portions: number;
+            /**
+             * Packed Fresh
+             * @default false
+             */
+            packed_fresh: boolean;
+            /** @default NORMAL */
+            time_budget: components["schemas"]["TimeBudget"];
+        };
+        /** StandardSlotOut */
+        StandardSlotOut: {
+            /** Day */
+            day: number;
+            meal: components["schemas"]["Meal"];
+            /** Eaters Home */
+            eaters_home: number;
+            /** Packed Portions */
+            packed_portions: number;
+            /** Packed Fresh */
+            packed_fresh: boolean;
+            time_budget: components["schemas"]["TimeBudget"];
+        };
+        /** StandardWeekIn */
+        StandardWeekIn: {
+            /** Slots */
+            slots: components["schemas"]["StandardSlotIn"][];
+        };
+        /** StoreIn */
+        StoreIn: {
+            /** Name */
+            name: string;
+            chain: components["schemas"]["Chain"];
+            /** Postal Code */
+            postal_code?: string | null;
+            /** Market Id */
+            market_id?: string | null;
+            /**
+             * Offers Enabled
+             * @default false
+             */
+            offers_enabled: boolean;
+            /**
+             * Is Primary
+             * @default false
+             */
+            is_primary: boolean;
+        };
+        /** StoreOut */
+        StoreOut: {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            chain: components["schemas"]["Chain"];
+            /** Postal Code */
+            postal_code: string | null;
+            /** Market Id */
+            market_id: string | null;
+            /** Offers Enabled */
+            offers_enabled: boolean;
+            /** Is Primary */
+            is_primary: boolean;
+        };
+        /** StorePatch */
+        StorePatch: {
+            /** Name */
+            name?: string | null;
+            chain?: components["schemas"]["Chain"] | null;
+            /** Postal Code */
+            postal_code?: string | null;
+            /** Market Id */
+            market_id?: string | null;
+            /** Offers Enabled */
+            offers_enabled?: boolean | null;
+            /** Is Primary */
+            is_primary?: boolean | null;
+        };
+        /** StoreStatusOut */
+        StoreStatusOut: {
+            /** Store Id */
+            store_id: number;
+            /** Store Name */
+            store_name: string;
+            /** Last Fetched At */
+            last_fetched_at: string | null;
+            last_status: components["schemas"]["SyncStatus"] | null;
+            /** Last Error */
+            last_error: string | null;
+            /** Market Label */
+            market_label: string | null;
+            /** Current Count */
+            current_count: number;
+        };
+        /**
          * SuitableFor
          * @enum {string}
          */
@@ -1410,10 +1727,11 @@ export interface components {
         SyncStatus: "OK" | "FAILED" | "PARTIAL";
         /**
          * TimeBudget
-         * @description Zeit für eine Mahlzeit. Bei `LITTLE` kommen nur schnelle Gerichte oder Reste.
+         * @description Zeit für eine Mahlzeit. Bei `LITTLE` kommen nur schnelle Gerichte oder Reste, bei
+         *     `NONE` nur Reste - dort wird nicht gekocht.
          * @enum {string}
          */
-        TimeBudget: "NORMAL" | "LITTLE";
+        TimeBudget: "NORMAL" | "LITTLE" | "NONE";
         /**
          * Unit
          * @enum {string}
@@ -2601,6 +2919,123 @@ export interface operations {
             };
         };
     };
+    list_stores_api_stores_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoreOut"][];
+                };
+            };
+        };
+    };
+    create_store_api_stores_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StoreIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoreOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_store_api_stores__store_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                store_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_store_api_stores__store_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                store_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StorePatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoreOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     health_api_health_get: {
         parameters: {
             query?: never;
@@ -2705,6 +3140,59 @@ export interface operations {
             };
         };
     };
+    get_standard_week_api_settings_standard_week_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StandardSlotOut"][];
+                };
+            };
+        };
+    };
+    put_standard_week_api_settings_standard_week_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StandardWeekIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StandardSlotOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     offers_api_offers_get: {
         parameters: {
             query?: never;
@@ -2721,6 +3209,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OfferOut"][];
+                };
+            };
+        };
+    };
+    offer_status_api_offers_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoreStatusOut"][];
+                };
+            };
+        };
+    };
+    fetch_offers_api_offers_fetch_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoreStatusOut"][];
                 };
             };
         };

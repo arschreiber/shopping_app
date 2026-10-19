@@ -13,6 +13,7 @@ from .model import DishSpec, Eligibility, Plan, SlotSpec
 _EFFORT_FITS: dict[TimeBudget, frozenset[Effort]] = {
     TimeBudget.NORMAL: frozenset({Effort.QUICK, Effort.NORMAL}),
     TimeBudget.LITTLE: frozenset({Effort.QUICK}),
+    TimeBudget.NONE: frozenset(),  # nur Reste
 }
 
 _EFFORT_LABEL = {
@@ -22,6 +23,7 @@ _EFFORT_LABEL = {
 _BUDGET_LABEL = {
     TimeBudget.NORMAL: "normale Zeit",
     TimeBudget.LITTLE: "wenig Zeit",
+    TimeBudget.NONE: "keine Zeit",
 }
 
 
@@ -43,7 +45,9 @@ def eligible(
         meal = "Mittag" if slot.key.meal_order == 0 else "Abend"
         reasons.append(f"nicht für {meal} vorgesehen")
 
-    if dish.effort not in _EFFORT_FITS[slot.time_budget]:
+    if slot.time_budget is TimeBudget.NONE:
+        reasons.append("keine Zeit - hier gibt es nur Reste")
+    elif dish.effort not in _EFFORT_FITS[slot.time_budget]:
         reasons.append(
             f"Aufwand '{_EFFORT_LABEL[dish.effort]}' passt nicht zu "
             f"'{_BUDGET_LABEL[slot.time_budget]}'"
@@ -56,6 +60,11 @@ def eligible(
         reasons.append(factor_reason(dish, factor))
 
     available = dish.portions_for(factor)
+    if not dish.reheatable and available > slot.demand:
+        rest = available - slot.demand
+        reasons.append(
+            f"nicht aufwärmbar - {rest} Portion{'en blieben' if rest > 1 else ' bliebe'} übrig"
+        )
     if available < slot.demand:
         reasons.append(
             f"{available} Portionen reichen nicht für {slot.demand} "

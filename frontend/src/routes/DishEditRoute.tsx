@@ -80,6 +80,7 @@ export function DishEditRoute() {
                   name: draft.name,
                   portions: draft.portions,
                   packable: draft.packable,
+                  reheatable: draft.reheatable,
                   allow_double: draft.allow_double,
                   allow_triple: draft.allow_triple,
                   effort: draft.effort,

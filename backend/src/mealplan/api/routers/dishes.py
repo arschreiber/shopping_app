@@ -68,6 +68,7 @@ def create_dish(session: SessionDep, payload: DishIn) -> DishOut:
         name=payload.name,
         portions=payload.portions,
         packable=payload.packable,
+        reheatable=payload.reheatable,
         allow_double=payload.allow_double,
         allow_triple=payload.allow_triple,
         effort=payload.effort,

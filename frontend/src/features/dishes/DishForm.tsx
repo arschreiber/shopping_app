@@ -11,6 +11,7 @@ export type DishDraft = {
   name: string;
   portions: Portions;
   packable: boolean;
+  reheatable: boolean;
   allow_double: boolean;
   allow_triple: boolean;
   effort: Effort;
@@ -50,6 +51,7 @@ export function emptyDraft(): DishDraft {
     name: "",
     portions: 3,
     packable: true,
+    reheatable: true,
     allow_double: true,
     allow_triple: false,
     effort: "NORMAL",
@@ -67,6 +69,7 @@ export function draftFromDish(dish: Dish): DishDraft {
     name: dish.name,
     portions: toPortions(dish.portions),
     packable: dish.packable,
+    reheatable: dish.reheatable,
     allow_double: dish.allow_double,
     allow_triple: dish.allow_triple,
     effort: dish.effort,
@@ -182,6 +185,12 @@ export function DishForm({
             checked={draft.packable}
             onChange={(packable) => patch({ packable })}
             label="mitnehmbar"
+          />
+          {/* Aus: Reste taugen nichts - der Planer kocht es nur so, dass es genau aufgeht. */}
+          <Toggle
+            checked={draft.reheatable}
+            onChange={(reheatable) => patch({ reheatable })}
+            label="aufwärmbar"
           />
           {/* 3er-Gerichte werden nie vervielfacht; bei 1 Portion sind doppelt *und*
               dreifach wählbar. Die gespeicherten Werte bleiben beim Wechsel erhalten. */}

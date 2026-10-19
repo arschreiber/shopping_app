@@ -8,6 +8,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from mealplan.domain import planner
 from mealplan.domain.enums import (
     CategoryAxis,
     Effort,
@@ -28,6 +29,16 @@ MONDAY = date(2026, 9, 7)
 
 
 @pytest.fixture(autouse=True)
+def _greedy_unless_marked(request, monkeypatch):
+    """Der Optimierer rechnet ~2 s und 10-15 CPU-Sekunden pro Vorschlag - wie in der App.
+    Tests, die nur *einen* vollen Plan brauchen (Einkaufsliste, Bring!, Diagnose ...),
+    nehmen den Greedy-Plan. Was das Vorschlagen selbst prüft, markiert sich mit
+    `@pytest.mark.optimizer` und rechnet mit dem echten Budget."""
+    if request.node.get_closest_marker("optimizer") is None:
+        monkeypatch.setattr(planner, "optimize", lambda *args, **kwargs: None)
+
+
+@pytest.fixture(autouse=True)
 def _isolate_settings():
     """`get_settings` ist gecacht - sonst zeigt ein Test auf das echte ./data."""
     from mealplan.config import get_settings
@@ -43,6 +54,7 @@ def dish(
     *,
     portions: int = 3,
     packable: bool = True,
+    reheatable: bool = True,
     allow_double: bool = True,
     allow_triple: bool = False,
     effort: Effort = Effort.NORMAL,
@@ -65,6 +77,7 @@ def dish(
         name=name,
         portions=portions,
         packable=packable,
+        reheatable=reheatable,
         allow_double=allow_double,
         allow_triple=allow_triple,
         effort=effort,

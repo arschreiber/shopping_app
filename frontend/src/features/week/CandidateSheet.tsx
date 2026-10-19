@@ -57,7 +57,7 @@ export function CandidateSheet({
     slot.packed_portions > 0
       ? `${slot.packed_portions} ${slot.packed_fresh ? "frisch " : ""}zum Mitnehmen`
       : null,
-    slot.time_budget === "LITTLE" ? TIME_LABEL.LITTLE : null,
+    slot.time_budget !== "NORMAL" ? TIME_LABEL[slot.time_budget] : null,
   ]
     .filter(Boolean)
     .join(" · ");

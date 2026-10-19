@@ -100,7 +100,8 @@ shopping_app/
         eligibility.py       # harte Kriterien
         scoring.py           # weiche Kriterien → ScoreBreakdown
         leftovers.py         # PortionLedger, Haltbarkeit, Reste-Ketten
-        planner.py           # Greedy + paarweises Tauschen, seeded RNG
+        planner.py           # Kandidaten, Vorschlag, Reroll; Greedy als Startlösung/Rückfall
+        optimizer.py         # die Woche als Ganzes: OR-Tools CP-SAT, deterministisch
         diagnostics.py       # Plan-Warnungen
         shopping.py          # Plan → aggregierte Einkaufsliste
         weights.py           # PlannerWeights + Defaults
@@ -122,7 +123,7 @@ shopping_app/
     src/
       api/            # openapi-typescript generiert + openapi-fetch Wrapper
       routes/         # Week, Dishes, DishEdit, Articles, ShoppingList, Offers
-      features/week/  # Board, SlotCard, CandidateSheet, DnD
+      features/week/  # Board, WeekGrid, SlotCard, SlotSettings (Raster-Menü), CandidateSheet, Standardwoche, DnD
       features/dishes/# QuickEntry, IngredientRows, ArticleCombobox
       components/  lib/
     public/manifest.webmanifest
@@ -141,10 +142,10 @@ Kern (Phase 1):
 
 | Tabelle | Wichtige Felder | Anmerkung |
 |---|---|---|
-| `article` | `canonical_name`, `unit`, `bring_category`, `bring_catalog_name`, `is_staple`, `is_watchlist` | `unit` ist **eine** kanonische Einheit pro Artikel (Plan §8 Nr. 10) |
+| `article` | `canonical_name`, `unit`, `bring_category`, `bring_catalog_name`, `is_staple`, `is_watchlist`, `max_unit_price`, `min_offer_amount` | `unit` ist **eine** kanonische Einheit pro Artikel (Plan §8 Nr. 10) |
 | `article_alias` | `article_id`, `alias`, `kind` (ALIAS/EIGENMARKE), `store_id?` | Basis für Angebots-Matching |
 | `category` | `axis` (SIDE/PROTEIN/CUISINE), `name` | Achsen als Enum, Werte als Zeilen → keine Spaltenwucherung |
-| `dish` | `name`, `portions` (1/2/3), `packable`, `allow_double`, `allow_triple`, `effort` (NORMAL/QUICK), `suitable_for`, `rating`, `prep_text`, `archived` | erlaubte Faktoren: 1er-Gericht ×2/×3 per Schalter, 2er-Gericht ×2 per `allow_double`, 3er nie (`DishSpec.factors`) |
+| `dish` | `name`, `portions` (1/2/3), `packable`, `reheatable`, `allow_double`, `allow_triple`, `effort` (NORMAL/QUICK), `suitable_for`, `rating`, `prep_text`, `archived` | erlaubte Faktoren: 1er-Gericht ×2/×3 per Schalter, 2er-Gericht ×2 per `allow_double`, 3er nie (`DishSpec.factors`) |
 | `dish_category` | `dish_id`, `category_id` | m:n |
 | `ingredient` | `dish_id`, `article_id`, `quantity` (Decimal, NULL = „nach Bedarf“), `unit`, `sort_order` | `unit` muss zu `article.unit` dimensionsgleich sein |
 | `week` | `iso_year`, `iso_week`, `primary_store_id`, `secondary_store_id?`, `planner_seed`, `version` | `version` = optimistisches Locking (Laptop + Handy gleichzeitig) |
@@ -155,7 +156,7 @@ Kern (Phase 1):
 | `shopping_list_item` | `article_id`, `quantity`, `unit`, `source` (RECIPE/MANUAL/WATCHLIST), `have_already`, `store_id?`, `spec_text`, `from_dish_ids` JSON | `from_dish_ids` = „warum steht das drauf?“ |
 | `bring_sync_item` | `article_id`, `bring_list_uuid`, `bring_item_uuid`, `last_name`, `last_spec`, `last_pushed_at` | Eigene UUIDs → nie Fremdeinträge anfassen (Plan §8 Nr. 8) |
 | `sync_run` | `kind`, `status`, `error`, `summary` JSON | Jeder Push/Fetch wird protokolliert und ist in der UI sichtbar |
-| `setting` | `key`, `value` JSON | Planer-Gewichte, Split-Schwelle €, Haushaltsnamen |
+| `setting` | `key`, `value` JSON | Planer-Gewichte, Split-Schwelle €, Haushaltsnamen, Standardwoche (Raster neuer Wochen) |
 
 Phase 2 (Schema von Anfang an anlegen, erst später bespielt – Migrationen sind billiger als Rework):
 
@@ -170,8 +171,9 @@ Phase 2 (Schema von Anfang an anlegen, erst später bespielt – Migrationen sin
 **Einheiten-Entscheidung (der unangenehmste Teil von Plan §8 Nr. 10):** Jeder Artikel hat genau eine
 kanonische Einheit (`STUECK`, `G`, `ML`). `units.py` rechnet innerhalb einer Dimension (g↔kg, ml↔l).
 Dimensionswechsel (2 Zwiebeln vs. 150 g Zwiebeln) wird beim **Erfassen** abgelehnt, mit Hinweis auf die
-gewählte Einheit – nicht stillschweigend geraten. Optionales `article.piece_weight_g` als späteres
-Upgrade ist im Schema vorgesehen, aber ungenutzt.
+gewählte Einheit – nicht stillschweigend geraten. `article.piece_size` („1 Stück ≈ 200 g“, in der
+Einheit des Artikels) rechnet bisher nur Stück-Angebote in kg-Preise um; die Mengen der Einkaufsliste
+bleiben davon unberührt.
 
 ---
 
@@ -203,15 +205,25 @@ Drei Entscheidungen, die den Rest tragen:
 3. **`seed` wird an der Woche persistiert.** „Neu würfeln“ = neuer Seed für diesen Slot; damit ist
    jeder Vorschlag reproduzierbar und Tests sind stabil.
 
-**Planer-Algorithmus** (bewusst kein OR-Tools, siehe Plan §4):
-1. Slots nach Schwierigkeit sortieren (Mitnehm-Bedarf, knappes Zeitbudget, kleiner Kandidatenpool).
-2. Greedy füllen, Pins respektieren, dabei den `PortionLedger` mitführen – ein 3-Portionen-Gericht am
-   Montagabend erzeugt sofort eine Reste-Portion, die als Kandidat für Dienstagmittag zur Verfügung
-   steht.
-3. Lokale Suche: paarweise Slot-Tauschs + Einzel-Reroll, solange der Gesamtscore steigt, harte
-   Iterationsgrenze (~200) → Laufzeit deutlich unter einer Sekunde bei 100 Gerichten × 14 Slots.
+**Planer-Algorithmus** – die Woche als Ganzes (Plan §4 sah OR-Tools als spätere Ausbaustufe vor):
+1. Greedy als Startlösung: Slots nach Schwierigkeit, jeweils der beste Kandidat, dann paarweise
+   Tauschs. Schnell, aber blind für Reste-Ketten – am Montagabend weiß er nicht, dass ein
+   3er-Gericht den Dienstagmittag dessen deckt, der allein isst.
+2. `optimizer.py`: jede Belegung ist eine Entscheidung (Gericht × Größe pro Slot, Reste aus
+   Topf *s* in Slot *t*); CP-SAT maximiert die Gesamtpunktzahl mit denselben Regeln und Gewichten
+   wie `scoring.py`. Abwechslung über Kategorien statt Gericht-Paare, das hält das Modell klein.
+   Harte Regeln: `eligible()`, ein Gericht einmal pro Woche, Reste decken einen Slot ganz und
+   innerhalb der Haltbarkeit, keine Reste Mittag → Abend am selben Tag (außer abends *keine
+   Zeit*), bei *keine Zeit* wird nicht gekocht.
+3. Rechenmenge statt Zeitlimit: erst kurz mit einer Strategie (kleine Wochen sind damit bewiesen
+   optimal), sonst 16 Strategien deterministisch verzahnt – ~2 s, derselbe Seed gibt denselben
+   Plan. Das Ergebnis wird mit `rescore()` bewertet; ist es nicht besser als der Greedy-Plan (oder
+   widersprechen sich Pins), bleibt der Greedy-Plan.
 4. `diagnose()` erzeugt die Warnungen aus Plan §5 Phase 1 (dreimal Reis, Dienstag nichts zum
    Mitnehmen, Aufwand passt nicht zur Zeit, Portion bleibt übrig).
+
+Tests prüfen den Optimierer gegen Durchprobieren: auf kleinen Wochen findet kein erlaubter Plan
+mehr Punkte, und seine Punkte sind die von `rescore()`.
 
 **`PortionLedger`** ist die Stelle, an der die untersuchten Konkurrenzprodukte scheitern, also die
 Stelle mit den meisten Tests: `produced = portions × factor`,
@@ -259,20 +271,49 @@ class LlmPort(Protocol):      # Naht, MVP-Implementierung: NullLlm
 
 ### Angebote (`integrations/offers/`)
 
-- `KorbunioOfferSource` spricht den Sidecar über `POST /api/v1/compare` an. `MarktguruOfferSource` als
+- `KorbunioOfferSource` spricht den Sidecar über `POST /api/v1/compare` an: pro Laden der *ganze*
+  Prospekt (`postal_code`, `retailers`, bei Rewe/Netto die Markt-ID, ohne `keywords`), seitenweise.
+  Zugeordnet wird bei uns – die Wortsuche der Quelle findet „Schafskäse“ nicht unter „Hirtenkäse“.
+  Format geprüft gegen Korbunio 0.1.57 (`tests/contract/cassettes/`). `MarktguruOfferSource` als
   zweite Meinung, Phase 2b.
+- Läden stehen in der Tabelle `store` (Kette, eigene PLZ, Markt-ID, `offer_source` NULL = keine
+  Angebote), gepflegt unter *Einstellungen → Läden* – nicht in `config.local.toml`, weil `data/` im
+  Container root gehört.
 - Jeder Fetch schreibt einen `offer_snapshot` **inklusive `raw_payload`** – Reprocessing bei
   Mapping-Änderungen ohne erneuten Abruf, und die Schema-Prüfung hat ein Beweisstück.
 - `status = OK` nur bei `offer_count > 0`. Der letzte OK-Snapshot bleibt der, den die App liest → ein
   fehlgeschlagener Abruf leert nie die Angebotsansicht (Plan §8 Nr. 2). Bilder werden nach
-  `./data/media/` gespiegelt, nicht gehotlinkt.
-- Scheduler: `APScheduler` in-process, Mo 05:00 und Do 05:00, Fetches im Threadpool.
+  `./data/media/` gespiegelt, nicht gehotlinkt (noch offen – bis dahin lädt das Detailfenster eines
+  Angebots das Bild erst beim Öffnen direkt von der Quelle, ohne Referrer; die Bilderansicht der
+  Liste ebenso, Vorschaubilder erst, wenn die Zeile in Sicht kommt: `loading="lazy"`). Pro Laden bleiben die
+  letzten sechs Abrufe plus der letzte gute.
+- Der Grundpreis wird beim Speichern vergleichbar gemacht (`domain/unit_price.py`: €/kg, €/l,
+  €/Stück; aus dem Text der Quelle, sonst aus Preis und Packung, zuletzt aus der Stückzahl
+  im Prospekttext - „2er-Schale“, „je St.“). Hat ein Artikel einen Richtpreis
+  (`article.max_unit_price`), zählt ein Angebot nur darunter; ein nicht vergleichbarer Grundpreis
+  zählt dann nie. Ebenso die Mindestpackung (`article.min_offer_amount`, in der Einheit des
+  Artikels): die Größe eines Angebots kommt aus Packung, Stückzahl × Stückgewicht oder Preis ÷
+  Grundpreis (`offer_quantity`); kleiner oder unbekannt zählt nicht (`pack_verdict`).
+- Der Normalpreis (`article.regular_pack_amount` + `regular_pack_price`, „250 g für 1,19 €“) ist vom
+  Richtpreis unabhängig: der Richtpreis entscheidet, *ob* ein Angebot zählt, der Normalpreis, *was es
+  bringt*. Jedes Angebot trägt seinen Abstand dazu (`normal_diff`) – Grundlage für den späteren
+  Planer-Bonus anstelle der „statt“-Preise, die die Quellen kaum liefern.
+- Erst alle Quellen abfragen, dann in einem Rutsch schreiben – ein Abruf dauert Sekunden pro Laden,
+  so lange soll niemand auf die SQLite-Schreibsperre warten. Ein Lock verhindert zwei Abrufe
+  gleichzeitig (Knopf + Cron).
+- Scheduler: `APScheduler` in-process, Mo 05:00 und Do 05:00, verpasste Termine bis mittags nachgeholt.
+  Dazu der Knopf `POST /api/offers/fetch`.
+- Plan und Einkaufsliste lesen nur **bestätigte** Zuordnungen (`offer_match.confirmed`): die
+  automatische hält „Gefüllte Paprika“ für Paprika.
 
 ### Matching (`matching/` + `services/matching.py`)
 
 Normalisieren (lowercase, Umlaut-Faltung, Mengen-Regex strippen, Eigenmarken-Token entfernen) →
 Treffer in `offer_match` (bestätigter Cache) → sonst RapidFuzz `token_set_ratio ≥ 85` gegen die
-Alias-Liste → sonst „Unzugeordnet“-Ansicht mit Ein-Klick-Zuordnung. Artikel mit
+Alias-Liste (Name, Aliase, Bring!-Katalogname) → sonst „Unzugeordnet“-Ansicht mit
+Ein-Klick-Zuordnung. Verglichen wird in `match_form`: ohne Verneintes („ohne Zucker“), Sorten-
+Vorsilben als eigenes Wort („speise kartoffeln“). Der Cache-Schlüssel bleibt `normalize` – eine
+neue Vorsilbe macht keine bestätigte Zuordnung ungültig. Artikel mit
 `article_store_availability.available = false` werden für diesen Laden gar nicht gesucht.
 
 ---
@@ -289,6 +330,7 @@ GET/POST        /api/articles           /api/articles/suggest?q=       # Combobo
 POST            /api/parse/ingredients                                 # Zeilen → Rows (s. §7)
 GET/PUT         /api/weeks/{iso}                                        # Raster incl. version
 POST            /api/weeks/{iso}/copy-from/{iso}                        # „wie letzte Woche“
+GET/PUT         /api/settings/standard-week                             # Raster, mit dem neue Wochen anfangen
 GET             /api/weeks/{iso}/slots/{slot_id}/candidates             # sortiert + Breakdown
 POST            /api/weeks/{iso}/propose        {reroll_slot_id?, keep_pins}
 PUT             /api/weeks/{iso}/slots/{slot_id}/assignment
@@ -426,4 +468,5 @@ Nach jedem Meilenstein, in dieser Reihenfolge:
 - Konkrete Score-Gewichte → Ergebnis von Meilenstein B (Spike 4), landen in `setting`, nicht im Code.
 - Markt-ID des Allfrisch-Marktes und PLZ → `data/config.local.toml`, **nicht** ins Repo.
 - Ob Korbunio die vier Läden abdeckt → entscheidet in Meilenstein E über eigene Adapter.
-- `article.piece_weight_g` (Stück↔Gramm) → erst, wenn die Erfassung zeigt, dass es wirklich stört.
+- `article.piece_size` auch für die Einkaufsliste nutzen („2 Dosen Mais“ statt „570 g Mais“) – dann
+  mit einer Bezeichnung pro Artikel (Stück, Dose, Bund).

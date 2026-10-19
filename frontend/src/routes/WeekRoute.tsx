@@ -3,7 +3,7 @@
  * zwei, drei Tauschs → Liste prüfen → Bring!. Alles auf einer Seite, ohne Seitenwechsel.
  */
 import { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import type { Candidate, Meal, Slot, SlotIn } from "../api/client";
 import {
   useAssign,
@@ -283,7 +283,12 @@ export function WeekRoute() {
               className="btn-primary btn-sm order-first sm:order-none"
             >
               <IconDice className="h-3.5 w-3.5" />
-              {data.planned_count > 0 ? "Lücken füllen" : "Woche vorschlagen"}
+              {/* Der Optimierer rechnet ein, zwei Sekunden - sichtbar, dass etwas passiert. */}
+              {propose.isPending
+                ? "plant …"
+                : data.planned_count > 0
+                  ? "Lücken füllen"
+                  : "Woche vorschlagen"}
             </button>
           )}
           {!editing && data.planned_count > 0 && (
@@ -300,19 +305,7 @@ export function WeekRoute() {
         </div>
       </header>
 
-      {editing && (
-        <p className="rounded-md border border-accent-line bg-accent-soft/50 px-3 py-2 text-xs
-                      text-ink-muted">
-          <span className="font-medium text-accent">Raster bearbeiten</span> – pro Mahlzeit:
-          wer zu Hause isst, wer etwas mitnimmt und ob{" "}
-          <span className="font-medium text-ink">wenig Zeit</span> ist (dann nur schnelle
-          Gerichte oder Reste).{" "}
-          <span className="font-medium text-ink">Mitnehmen</span> trägst du bei der Mahlzeit
-          ein, die unterwegs gegessen wird:{" "}
-          <span className="font-medium text-ink">vorgekocht</span> kommt bevorzugt aus Resten,{" "}
-          <span className="font-medium text-ink">frisch</span> wird in dieser Mahlzeit gekocht.
-        </p>
-      )}
+      {editing && <GridHint />}
 
       {!editing && errors.length > 0 && (
         <WarningList warnings={errors} onSelect={(day, meal) => setSelected({ day, meal })} />
@@ -389,6 +382,45 @@ export function WeekRoute() {
           );
         }}
       />
+    </div>
+  );
+}
+
+/** Eine Zeile reicht zum Loslegen; was "frisch" und "vorgekocht" heißt, steht dahinter. */
+function GridHint() {
+  const [more, setMore] = useState(false);
+  return (
+    <div className="rounded-md border border-accent-line bg-accent-soft/50 px-3 py-2 text-xs
+                    text-ink-muted">
+      <p className="flex items-center gap-2">
+        <span>Tippe eine Mahlzeit an und wähle, wer isst.</span>
+        <button
+          type="button"
+          aria-expanded={more}
+          aria-label={more ? "Erklärung ausblenden" : "Mehr erklären"}
+          onClick={() => setMore((open) => !open)}
+          className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full border
+                     border-accent-line bg-surface px-1.5 text-2xs font-medium text-accent
+                     hover:bg-accent-soft"
+        >
+          {more ? "weniger" : "?"}
+        </button>
+      </p>
+      {more && (
+        <p className="mt-1.5">
+          <span className="font-medium text-ink">Mitnehmen</span> trägst du bei der Mahlzeit
+          ein, die unterwegs gegessen wird: <span className="font-medium text-ink">frisch</span>{" "}
+          wird in dieser Mahlzeit mitgekocht, <span className="font-medium text-ink">vorgekocht</span>{" "}
+          kommt bevorzugt aus Resten. Bei <span className="font-medium text-ink">wenig Zeit</span>{" "}
+          kommen nur schnelle Gerichte oder Reste, bei{" "}
+          <span className="font-medium text-ink">keiner Zeit</span> nur Reste – dafür kocht der
+          Planer vorher mehr. Neue Wochen starten mit der{" "}
+          <Link to="/settings" className="font-medium text-accent underline-offset-2 hover:underline">
+            Standardwoche
+          </Link>
+          .
+        </p>
+      )}
     </div>
   );
 }

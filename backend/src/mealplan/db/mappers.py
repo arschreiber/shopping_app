@@ -58,6 +58,7 @@ def dish_to_spec(
         name=dish.name,
         portions=dish.portions,
         packable=dish.packable,
+        reheatable=dish.reheatable,
         allow_double=dish.allow_double,
         allow_triple=dish.allow_triple,
         effort=Effort(dish.effort),

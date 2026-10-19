@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from ..config import Settings, get_settings
 from ..db.session import session_scope
-from ..ports import BringCatalog, ShoppingListSync
+from ..ports import BringCatalog, OfferSource, ShoppingListSync
 
 
 def db() -> Iterator[Session]:
@@ -30,6 +30,10 @@ def catalog(request: Request) -> BringCatalog:
     return request.app.state.catalog
 
 
+def offer_source(request: Request) -> OfferSource | None:
+    return getattr(request.app.state, "offer_source", None)
+
+
 # `scope="function"`: committen, *bevor* die Antwort rausgeht. Der Standard ("request")
 # committet erst danach - dann sieht der nächste Request des Clients die Daten der
 # vorigen Antwort womöglich noch nicht, und scheitert der Commit, hat der Client schon
@@ -38,3 +42,4 @@ SessionDep = Annotated[Session, Depends(db, scope="function")]
 SettingsDep = Annotated[Settings, Depends(settings)]
 SyncDep = Annotated[ShoppingListSync, Depends(sync_adapter)]
 CatalogDep = Annotated[BringCatalog, Depends(catalog)]
+OfferSourceDep = Annotated[OfferSource | None, Depends(offer_source)]

@@ -6,8 +6,11 @@ from decimal import Decimal
 
 from conftest import dish, full_week, slot, snapshot
 from mealplan.domain.enums import Effort, Meal, TimeBudget
-from mealplan.domain.model import Assignment, Plan, replace
-from mealplan.domain.scoring import score
+from mealplan.domain.leftovers import LeftoverPool
+from mealplan.domain.model import Assignment, Plan, SlotKey, replace
+from mealplan.domain.planner import rescore
+from mealplan.domain.scoring import score, score_leftover
+from mealplan.domain.weights import DEFAULT_WEIGHTS
 
 
 def rules(breakdown) -> dict[str, float]:
@@ -132,3 +135,59 @@ def test_cooking_a_single_portion_recipe_twice_is_no_extra_effort():
     twice = score(burger, slot(0, Meal.DINNER), Plan(), snap, factor=2)
     assert "doubling" not in rules(twice)
     assert rules(twice)["exact_portions"] > 0
+
+
+# ------------------------------------------------------------- Reste im fertigen Plan
+
+
+def test_in_a_finished_plan_leftovers_nobody_eats_are_waste():
+    """Montag mittags und abends je ein 3er-Gericht für zwei, Dienstagmittag isst einer
+    die Reste vom Abend. Vom Mittag isst niemand etwas - auch wenn Dienstagmittag
+    *vorher* noch hätte zugreifen können. Der fertige Plan sagt, was wirklich passiert."""
+    pool = [dish(1, "Ratatouille"), dish(2, "Chili")]
+    week = full_week(
+        **{
+            "1L": slot(1, Meal.LUNCH, eaters_home=1),
+            **{
+                f"{d}{m}": slot(d, Meal.LUNCH if m == "L" else Meal.DINNER, eaters_home=0)
+                for d in range(1, 7)
+                for m in "LD"
+                if (d, m) != (1, "L")
+            },
+        }
+    )
+    snap = snapshot(week, pool)
+    lunch, dinner, tuesday = (
+        SlotKey.of(0, Meal.LUNCH),
+        SlotKey.of(0, Meal.DINNER),
+        SlotKey.of(1, Meal.LUNCH),
+    )
+    plan = rescore(
+        Plan()
+        .with_(lunch, Assignment.dish(1))
+        .with_(dinner, Assignment.dish(2))
+        .with_(tuesday, Assignment.leftover(dinner, 2, 1)),
+        snap,
+    )
+    assert "waste" in rules(plan.get(lunch).score)
+    assert "surplus_usable" not in rules(plan.get(lunch).score)
+    assert "surplus_usable" in rules(plan.get(dinner).score)
+    assert "waste" not in rules(plan.get(dinner).score)
+
+
+def test_leftovers_count_most_where_one_eats_alone_or_time_is_short():
+    pool = [dish(1, "Ratatouille")]
+    source = SlotKey.of(0, Meal.DINNER)
+    leftover = LeftoverPool(source=source, dish_id=1, portions=2, last_usable_day=2)
+    w = DEFAULT_WEIGHTS
+
+    def total(**slot_kwargs) -> float:
+        target = slot(1, Meal.LUNCH, **slot_kwargs)
+        return score_leftover(leftover, target, snapshot(full_week(), pool)).total
+
+    together = total()
+    assert total(eaters_home=1) == together + w.leftover_alone
+    assert total(time_budget=TimeBudget.LITTLE) == together + w.leftover_little_time
+    target = slot(1, Meal.LUNCH)
+    again = score_leftover(leftover, target, snapshot(full_week(), pool), repeat=True).total
+    assert again == together + w.leftover_second_meal

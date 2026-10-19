@@ -37,6 +37,7 @@ export function DishesRoute() {
           name: draft.name,
           portions: draft.portions,
           packable: draft.packable,
+          reheatable: draft.reheatable,
           allow_double: draft.allow_double,
           allow_triple: draft.allow_triple,
           effort: draft.effort,
@@ -166,6 +167,9 @@ function DishTable({ dishes }: { dishes: DishSummary[] }) {
                 <div className="mt-0.5 flex items-center gap-1.5">
                   {!dish.packable && (
                     <span className="text-2xs text-ink-faint">nicht mitnehmbar</span>
+                  )}
+                  {!dish.reheatable && (
+                    <span className="text-2xs text-ink-faint">nicht aufwärmbar</span>
                   )}
                   {dish.portions === 2 && !dish.allow_double && (
                     <span className="text-2xs text-ink-faint">nicht verdoppelbar</span>

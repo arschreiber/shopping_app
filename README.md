@@ -16,11 +16,9 @@ Recherche) und [`ARCHITECTURE.md`](ARCHITECTURE.md) (Bauplan).
 | **B** Planungskern | `eligibility`, `scoring`, `leftovers`, `planner`, `diagnostics`, Gewichte in `setting`, CLI | ✅ |
 | **C** Wochen-UI | Rasterseite, Board mit Drag & Drop, Kandidaten-Sheet mit Begründung, Pins, Neu-würfeln, Warnungen, „wie letzte Woche“ | ✅ |
 | **D** Liste & Bring! | Aggregation, Grundvorrat-Filter, Abhaken, Diff-Push, Textexport, Sync-Historie, PWA | ✅ |
-| **E** Angebote | Schema, Ports, Korbunio-Adapter, Matching, Angebots-Bonus im Score | 🟡 vorbereitet, Quelle nicht angeschlossen |
+| **E** Angebote | Läden, Abruf über Korbunio, Angebote-Seite (Stufe 1) · Zuordnen bestätigen (Stufe 2) · Bonus im Plan, Hinweise auf der Liste (Stufe 3) | 🟡 Stufe 1 fertig |
 
-Phase 2 (Angebote) ist laut Plan **absichtlich** noch nicht scharf: erst drei Wochen
-Alltag mit Phase 1, dann Korbunio dazuschalten. Das Schema, das Matching und der
-Score-Bonus existieren und sind getestet – es fehlt nur die konfigurierte Quelle.
+Phase 2 läuft in Stufen, siehe [Angebote](#angebote).
 
 ---
 
@@ -152,6 +150,84 @@ Feld „Bring!-Katalogname“ mit Fuzzy-Vorschlag aus dem gecachten Katalog (~36
 
 ---
 
+## Angebote
+
+Die Prospekte holt **Korbunio** (github.com/lesecuritae/Korbunio), ein zweiter Container
+neben der App: Rewe direkt von rewe.de, Netto und Combi aus den regionalen
+marktguru-Prospekten.
+
+1. Korbunio starten (einmalig, danach startet er mit):
+   ```bash
+   sudo docker compose --profile offers up -d --build
+   ```
+2. Für den automatischen Abruf Mo + Do um 5 Uhr in `.env`:
+   `MEALPLAN_OFFER_FETCH_ENABLED=true`. Der Knopf auf der Angebote-Seite geht auch ohne.
+3. Unter *Einstellungen → Läden* eintragen, wo ihr einkauft: Kette, **PLZ des Ladens**,
+   bei Rewe die Markt-ID (steht in der Angebots-Adresse des Markts,
+   `rewe.de/angebote/<ort>/<markt-id>/…`), und „Angebote“ an oder aus.
+
+**Was man wissen muss:**
+- Korbunio findet einen Rewe-Markt nur über *dessen* PLZ – darum hat jeder Laden seine
+  eigene. Die Angebote unterscheiden sich wirklich pro Markt (Heinrichstraße 150,
+  Lengericher Landstraße 243, gemeinsam nur 133).
+- Bei **Edeka** nimmt Korbunio den ersten Markt zur PLZ, wählen lässt er sich nicht.
+  **Allfrisch** veröffentlicht seine Angebote ohnehin nur in der Edeka-App – er steht als
+  Hauptladen ohne Angebote in der Liste.
+- Ein „statt“-Preis fehlt fast immer, und „gültig bis“ steht oft nur als Text im
+  Prospekt; fehlt beides, gilt ein Angebot bis Samstag. Abgelaufene verschwinden von
+  selbst, ein fehlgeschlagener Abruf lässt die letzten guten stehen.
+- Die **automatische Zuordnung** liegt etwa zu zwei Dritteln richtig („Gefüllte Paprika“
+  ist keine Paprika). Darum wirkt auf Einkaufsliste und Planer nur, was bestätigt ist –
+  bestätigen kommt mit Stufe 2.
+- **Richtpreis** pro Artikel (*Artikel → bearbeiten*): in €/kg, €/l oder €/Stück, je nach
+  Einheit des Artikels. Ein Angebot darüber zählt für den Artikel nicht – es fehlt unter
+  „meine Artikel“, auf der Liste und im Planer, und steht unter „alle“ als „über
+  Richtpreis“. Ohne Richtpreis zählt jedes Angebot; lässt sich der Grundpreis eines
+  Angebots nicht vergleichen („€/Portion“, Stück-Preis für einen Gramm-Artikel), zählt es
+  bei gesetztem Richtpreis nicht. Den Grundpreis liefert meist die Quelle, sonst rechnet
+  die App ihn aus Preis und Packung, zuletzt aus der Stückzahl im Prospekttext
+  („2er-Schale“, „je St.“ – so steht es bei Obst und Gemüse oft nur dort):
+  `domain/unit_price.py`.
+- **Mindestpackung** pro Artikel („Heidelbeeren ab 400 g“): kleinere Packungen zählen
+  nicht und stehen unter „alle“ als „Packung zu klein“. Die Größe kommt aus der Packung,
+  der Stückzahl (über das Stückgewicht) oder aus Preis ÷ Grundpreis; lässt sie sich gar
+  nicht bestimmen, zählt das Angebot bei gesetzter Mindestpackung nicht.
+- **Watchlist:** Was ihr nicht kocht, aber im Angebot kaufen wollt (Frischkäse, Cola,
+  Orangen …), ist ein normaler Artikel mit dem Schalter „Angebots-Watchlist“ (★) –
+  mit Aliasen, Richt- und Normalpreis wie jeder andere. Der Vorschlag „mit auf die
+  Liste?“ kommt mit dem Bestätigen (Stufe 2).
+- **Erkennung:** Vorsilben, die nur die Sorte sagen, verdecken den Artikel nicht –
+  Speisekartoffeln sind Kartoffeln, Strauchtomaten sind Tomaten (Liste in
+  `matching/normalize.py`). Was nach „ohne“, „wenig“ oder „weniger“ steht, zählt nicht
+  („Haferdrink ohne Zucker“ ist kein Zucker). Auch der Bring!-Katalogname des Artikels
+  gilt als Name – ein allgemeiner („Cola“) findet darum auch Pepsi.
+- **Normalpreis** pro Artikel – was ihr ohne Angebot zahlt, meist für die Eigenmarke –,
+  eingegeben wie beim Einkauf: „250 g für 1,19 €“. Die App rechnet den Grundpreis
+  (4,76 €/kg) und zeigt an jedem Angebot den Abstand („+0,40 €/kg ggü. normal (+8 %)“).
+  Er ist vom Richtpreis unabhängig: ein Markenangebot über dem Normalpreis kann sich
+  lohnen, wenn die Qualität zählt (Richtpreis höher), bei anderen Artikeln zählt nur
+  echtes Sparen (Richtpreis niedriger). Später die Grundlage für den Planer-Bonus und die
+  Kosten pro Gericht.
+- **Stückgewicht** („1 Stück ≈ 200 g“) für Gramm- und Milliliter-Artikel, die man
+  stückweise kauft (Avocado, Gurke, Kopfsalat): damit wird ein Angebot „0,99 €/Stück“ zu
+  4,95 €/kg und mit Richt- und Normalpreis vergleichbar (Avocados 1,29 € als 2er-Schale
+  bei 1 Stück ≈ 150 g: 0,65 €/Stück ≈ 4,33 €/kg) – sichtbar als Umrechnung („≈“),
+  weil es ein Schätzwert ist. Ohne Stückgewicht bleibt ein Stück-Angebot für einen
+  Gramm-Artikel unvergleichbar. Den Normalpreis kann man dann auch pro Stück eingeben
+  („1 Stück für 0,79 €“).
+- **Nachprüfen:** Ein Klick auf ein Angebot zeigt Produktbild, Prospekttext, Grundpreis,
+  Gültigkeit, das Urteil gegen den Richtpreis und die Quelle – bei Rewe die Angebotsseite
+  des Markts, bei Combi und Netto den Prospekt bei marktguru. Auf ein *einzelnes*
+  Angebot verlinkt keine der Quellen.
+- **Bilder:** Der Schalter „Bilder“ über der Liste zeigt das Produktbild neben jedem
+  Angebot. Gemerkt wird das pro Gerät (im Browser). Geladen wird nur, was beim Scrollen in
+  Sicht kommt, direkt von der Quelle und ohne Referrer.
+- Korbunio ist nur im internen Docker-Netz erreichbar (`expose`, nie `ports`): er hat
+  keine eigene Anmeldung. Die Version ist fest (`0.1.57`); ein Update heißt Version in
+  `compose.yaml` ändern und `tests/contract/test_korbunio.py` laufen lassen.
+
+---
+
 ## Die Kommandozeile
 
 Der Planungskern läuft ohne UI – so wurden die Gewichte kalibriert (Spike 4):
@@ -214,8 +290,8 @@ bleiben davon frei (ein Test hält diese Grenze fest).
 
 Jede Zutat kann vier Angaben tragen: Energie, Kohlenhydrate, Fett, Eiweiß. Die
 Bezugsgröße steckt schon in der Einheit und braucht kein eigenes Feld – **je 100 g**,
-**je 100 ml** oder **je Stück**. Damit trägt eine Zucchini ihre Werte je Stück, und das
-im Schema vorgesehene `piece_weight_g` bleibt weiterhin ungenutzt.
+**je 100 ml** oder **je Stück**. Damit trägt eine Zucchini ihre Werte je Stück; das
+Stückgewicht (`piece_size`) spielt für die Nährwerte keine Rolle.
 
 Am Gericht erscheinen die Werte **je Portion**, im Formular live beim Tippen (gerechnet
 wird auf dem Server, damit die Logik nicht doppelt existiert). In der Gerichte-Liste
@@ -251,9 +327,14 @@ Gericht bekommt einen Score – und **der Score ist die Begründung**: eine List
 Beiträge, die die UI direkt anzeigt. Es gibt keinen zweiten Erklärungspfad.
 
 **Harte Kriterien** (Gericht scheidet aus): bei *wenig Zeit* ein Gericht, das nicht
-*schnell* ist · nicht
-mitnehmbar, obwohl der Slot Mitnehm-Portionen braucht · Portionen reichen nicht · falsche
-Mahlzeit · diese Woche schon eingeplant.
+*schnell* ist · bei *keiner Zeit* jedes Gericht (nur Reste) · nicht
+mitnehmbar, obwohl der Slot Mitnehm-Portionen braucht · Portionen reichen nicht · nicht
+*aufwärmbar*, aber es bliebe etwas übrig · falsche Mahlzeit · diese Woche schon eingeplant.
+
+**Aufwärmbar:** Was sich nicht aufwärmen lässt (Schalter am Gericht aus), schlägt der
+Planer nur in einer Größe vor, die genau aufgeht – ein 3er-Gericht also nur, wo drei
+Portionen gebraucht werden, verdoppelt nur für vier. Reste entstehen daraus nie. Von Hand
+geht es trotzdem; dann meldet der Plan „nicht aufwärmbar – 1 Portion bliebe übrig“.
 
 **Vervielfachen:** Ein 2-Portionen-Gericht lässt sich verdoppeln, wenn der Schalter
 *doppelt möglich* am Gericht an ist – manches passt schlicht nicht in doppelter Menge in
@@ -267,27 +348,43 @@ Beilage / Protein / Küche, gestaffelt nach Abstand und **summiert** (das dritte
 kostet mehr als das zweite) · Rotation · Bewertung · Portionsgenauigkeit ·
 Reste-Verwertung · Angebots-Ersparnis.
 
-**Zeit und Aufwand** haben je zwei Stufen. Ein Gericht ist *normal* oder *schnell* (unter
-20 Minuten), eine Mahlzeit hat *normale* oder *wenig Zeit* – Standard ist beide Male
-*normal*. Bei wenig Zeit kommen nur schnelle Gerichte oder Reste in Frage; im Board steht
-dort eine kleine Uhr. Diese Mahlzeiten füllt der Planer zuerst, damit die schnellen
-Gerichte nicht vorher an normalen Tagen verbraucht sind. Punkte gibt der Aufwand keine:
+**Zeit und Aufwand:** Ein Gericht ist *normal* oder *schnell* (unter 20 Minuten), eine
+Mahlzeit hat *normale*, *wenig* oder *keine Zeit* – Standard ist *normal*. Bei wenig Zeit
+kommen nur schnelle Gerichte oder Reste in Frage (im Board eine kleine Uhr), bei keiner Zeit
+nur Reste (eine Reste-Schale) – dafür kocht der Planer vorher entsprechend mehr. Punkte gibt
+der Aufwand keine:
 ein Bonus bekäme bei wenig Zeit ohnehin jedes frische Gericht und würde nur die Reste
 zurücksetzen. Von Hand lässt sich trotzdem ein normales Gericht dorthin legen – dann
 meldet sich der Plan mit einem Hinweis.
 
+**Woche vorschlagen** plant die Woche als Ganzes (OR-Tools) und dauert etwa 2 Sekunden.
+Gesucht ist der Plan mit der besten Gesamtpunktzahl – Reste eingeschlossen: wer allein isst,
+bekommt bevorzugt Reste vom Vortag statt eines 2er-Gerichts für eine Person.
+
 **Zufall:** Jedes „Woche vorschlagen“ zieht einen neuen Zufallswert (an der Woche
-gespeichert, also nachstellbar), und beim Auswählen bekommt jedes frische Gericht 0 bis
-*Zufall* Punkte dazu (Standard 6, Seite *Einstellungen*). Ähnlich gute Gerichte wechseln
-sich so ab; eins mit klarem Abzug bleibt draußen. Ob Reste drankommen, entscheidet immer
-der echte Score. Die angezeigten Punkte und Begründungen enthalten keinen Zufall.
+gespeichert, also nachstellbar), und jedes frische Gericht bekommt pro Mahlzeit bis zu
+±*Zufall*/2 Punkte (Standard 6, Seite *Einstellungen*). Ähnlich gute Gerichte wechseln
+sich so ab; eins mit klarem Abzug bleibt draußen. Weil der Zufall um null liegt, verschiebt
+er Reste gegen Kochen nicht im Schnitt. Die angezeigten Punkte und Begründungen enthalten
+keinen Zufall.
 **Neu würfeln** zieht aus den fünf besten *anderen* Gerichten (jedes in seiner
 bestpassenden Größe) und füllt eine Mahlzeit, die von den Resten des alten Gerichts
 leben sollte, gleich neu.
 
-**Niemand da:** „auswärts“ im Raster ist eine Abkürzung für 0 zu Hause, 0 mitnehmen.
-Wer eine verplante Mahlzeit so umstellt, nimmt ihr Gericht samt davon abhängiger
-Reste aus dem Plan – und von der Einkaufsliste.
+**Raster bearbeiten:** Jede Mahlzeit zeigt nur, was eingestellt ist; Antippen öffnet
+ein kleines Menü mit *2 zu Hause*, *1 zu Hause*, *niemand da* und *1 zu Hause + 1
+mitnehmen*, dazu den Schalter *wenig Zeit*. Alles Seltenere (2 mitnehmen, nur
+mitnehmen …) steht unter *Anpassen*. Der Knopf *niemand da* neben dem Tagesnamen stellt
+den ganzen Tag um.
+
+**Niemand da** nimmt einer verplanten Mahlzeit ihr Gericht samt davon abhängiger Reste
+aus dem Plan – und von der Einkaufsliste. Damit das nicht unbemerkt passiert, bleibt das
+Gericht beim Bearbeiten klein in der Zelle stehen; das Menü sagt vorher „… fällt dann
+weg“, die Zelle danach „… fällt weg“.
+
+**Standardwoche** (Seite *Einstellungen*): Mit diesem Raster startet jede neue Woche –
+etwa Wochenende frei, Dienstagabend 1 + 1 frisch. Schon angelegte Wochen bleiben, wie
+sie sind; für Ausnahmen gibt es weiter „wie letzte Woche“.
 
 **Gekocht oder ausgefallen:** Der Plan ist zugleich der Koch-Verlauf. Ein geplantes
 Gericht zählt ab seinem Tag als gekocht – dafür muss niemand etwas abhaken. Ist es
@@ -302,21 +399,31 @@ Montag „vor 1 Woche“.
 Haltbarkeit 1–2 Tagen. Sie erscheint als eigene Karte in einem späteren Slot – aber nur,
 wenn sie dessen Bedarf **ganz** deckt. Eine Portion ernährt keine zwei Esser, und ein
 unterversorgter Slot wäre schlimmer als ein leerer, weil ihn niemand bemerkt.
+Wie gern der Planer Reste einplant, steuern Gewichte (Seite *Einstellungen*): eine
+Reste-Mahlzeit bringt 10 Punkte, +8, wenn einer allein isst, +15 bei wenig Zeit. Aus einem
+Topf dürfen zwei Reste-Mahlzeiten kommen (verdoppelt), die zweite kostet 6 Punkte. Mittags
+gekocht und abends dasselbe plant er nicht – außer abends ist keine Zeit.
 
 **Mitnehmen** wird bei der Mahlzeit eingetragen, die *unterwegs gegessen* wird, und
-verlangt ein mitnehmbares Gericht. Standard ist *vorgekocht*: „Dienstag Mittag, 1
-mitnehmen“ füllt der Planer bevorzugt mit Resten vom Vorabend. Auf *frisch* gestellt wird
-in dieser Mahlzeit gekocht – „Montag Abend, 1 zu Hause + 1 mitnehmen (frisch)“ für das
-Abendessen, das zu einem Termin mitgeht; Reste kommen dort nicht in Frage.
+verlangt ein mitnehmbares Gericht. *Frisch* wird in dieser Mahlzeit mitgekocht –
+„Dienstag Abend, 1 zu Hause + 1 mitnehmen (frisch)“ für das Abendessen, das zu einem
+Termin mitgeht; Reste kommen dort nicht in Frage. *Vorgekocht* füllt der Planer
+bevorzugt mit Resten: „Dienstag Mittag, 1 mitnehmen“ aus dem Vorabend. Im Menü startet
+Mitnehmen mit *frisch*, weil es so genutzt wird; ein Tipp schaltet um.
 
 ---
 
 ## Tests
 
 ```bash
-cd backend && uv run pytest -m "not live"     # 286 Tests: Domäne, API, Verträge
-cd frontend && npm test                        # 25 Tests: Wochen-Arithmetik, Formatierung
+cd backend && uv run pytest -m "not live"     # 393 Tests, parallel auf allen Kernen, ~20 s
+cd frontend && npm test                        # 38 Tests: Wochen-Arithmetik, Formatierung, Raster
 ```
+
+Ein Vorschlag kostet den Optimierer ~2 s und 10–15 CPU-Sekunden. Darum planen nur die Tests,
+die das Vorschlagen selbst prüfen (`@pytest.mark.optimizer`), mit ihm – mit derselben
+Rechenmenge wie die App. Alle anderen brauchen nur *einen* vollen Plan und nehmen den
+Greedy-Plan. Einen einzelnen Test im Debugger: `uv run pytest -n0 …`.
 
 | Ebene | Was sie absichert |
 |---|---|
@@ -369,11 +476,12 @@ SQLAlchemy direkt, kein Repository-Interface, kein CQRS.
 - **Score-Gewichte final kalibrieren.** Die Defaults sind Startwerte; die echte
   Kalibrierung braucht eure echte Gerichteliste. Weg: `mealplan plan` mit verschiedenen
   Gewichten, oder direkt auf der Seite *Einstellungen*.
-- **PLZ und Edeka-Markt-ID** des Allfrisch-Marktes → `data/config.local.toml`, nicht ins
-  Repo (ARCHITECTURE.md §12).
-- **Korbunio** als Container testen (Spike 2), bevor Phase 2 scharf geschaltet wird.
-- **`article.piece_weight_g`** (Stück ↔ Gramm) ist im Schema vorgesehen, aber ungenutzt.
-  Erst umsetzen, wenn die Erfassung zeigt, dass es wirklich stört.
+- **Angebote, Stufe 2 und 3:** Zuordnungen bestätigen/korrigieren, „gibt's dort nicht“
+  pro Laden; Bonus im Planer auf „Zutat im Angebot“ statt Ersparnis umstellen (die
+  Quellen liefern kaum „statt“-Preise), Hinweise auf der Einkaufsliste.
+- **Einkaufsliste in Kaufeinheiten:** „2 Dosen Mais“ statt „570 g Mais“, „1 Avocado“ statt
+  „140 g Avocado“ – über das Stückgewicht plus eine Bezeichnung pro Artikel (Stück, Dose,
+  Bund). Das Stückgewicht wirkt bisher nur auf den Angebotsvergleich.
 - **Einkaufs-Split** (Haupt- vs. Zweitladen) ist als Domänenfunktion vorgesehen, aber
   ohne Angebotsdaten wertlos – kommt mit Phase 2.
 

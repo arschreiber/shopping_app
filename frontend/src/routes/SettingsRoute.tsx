@@ -4,10 +4,20 @@
  * (ARCHITECTURE.md §8).
  */
 import { useEffect, useState } from "react";
-import { useHealth, useSaveSettings, useSettings, useSyncRuns } from "../api/hooks";
+import type { Meal, SlotIn } from "../api/client";
+import {
+  useHealth,
+  useSaveSettings,
+  useSaveStandardWeek,
+  useSettings,
+  useStandardWeek,
+  useSyncRuns,
+} from "../api/hooks";
 import { EmptyState, Spinner } from "../components/Primitives";
 import { SectionTitle } from "../components/Primitives";
 import { errorText, useToast } from "../components/Toast";
+import { StoresSection } from "../features/stores/StoresSection";
+import { StandardWeekSection, toCells, toStandard } from "../features/week/StandardWeekSection";
 
 /** Gruppiert die Gewichte so, wie general_plan.md §4 sie beschreibt. */
 const GROUPS: { title: string; hint: string; keys: string[] }[] = [
@@ -38,6 +48,9 @@ const GROUPS: { title: string; hint: string; keys: string[] }[] = [
       "surplus_usable_per_portion",
       "leftover_covers_demand",
       "leftover_assignment",
+      "leftover_alone",
+      "leftover_little_time",
+      "leftover_second_meal",
       "doubling",
     ],
   },
@@ -77,6 +90,9 @@ const LABELS: Record<string, string> = {
   surplus_usable_per_portion: "Rest-Portion ist verwertbar",
   leftover_covers_demand: "Reste-Karte deckt den Slot",
   leftover_assignment: "Reste statt neu kochen",
+  leftover_alone: "Reste, wenn einer allein isst",
+  leftover_little_time: "Reste bei wenig Zeit",
+  leftover_second_meal: "zweite Reste-Mahlzeit aus einem Topf",
   doubling: "verdoppeln",
   rating_per_star: "pro Stern über 3",
   offer_per_euro: "pro Euro Ersparnis",
@@ -94,6 +110,23 @@ export function SettingsRoute() {
   const [weights, setWeights] = useState<Record<string, number>>({});
   const [shelfLife, setShelfLife] = useState(2);
   const [threshold, setThreshold] = useState(5);
+
+  const standard = useStandardWeek();
+  const saveStandard = useSaveStandardWeek();
+  const [standardDraft, setStandardDraft] = useState<SlotIn[] | null>(null);
+  const standardSaved = standard.data ? toCells(standard.data) : null;
+  const standardCells = standardDraft ?? standardSaved;
+  const standardDirty =
+    standardDraft !== null && JSON.stringify(standardDraft) !== JSON.stringify(standardSaved);
+
+  function changeStandard(day: number, meal: Meal, changes: Partial<SlotIn>) {
+    // Funktional, weil "ganzer Tag" beide Mahlzeiten direkt nacheinander ändert.
+    setStandardDraft((current) =>
+      (current ?? standardSaved ?? []).map((cell) =>
+        cell.day === day && cell.meal === meal ? { ...cell, ...changes } : cell,
+      ),
+    );
+  }
 
   useEffect(() => {
     if (!settings.data) return;
@@ -117,10 +150,34 @@ export function SettingsRoute() {
     );
   }
 
-  const dirty =
+  const settingsDirty =
     JSON.stringify(weights) !== JSON.stringify(settings.data.planner_weights) ||
     shelfLife !== Number(settings.data.shopping.leftover_shelf_life_days ?? 2) ||
     threshold !== Number(settings.data.shopping.split_threshold_eur ?? 5);
+  const dirty = settingsDirty || standardDirty;
+  const saving = save.isPending || saveStandard.isPending;
+
+  async function saveAll() {
+    try {
+      if (settingsDirty) {
+        await save.mutateAsync({
+          planner_weights: weights,
+          shopping: {
+            ...settings.data!.shopping,
+            leftover_shelf_life_days: shelfLife,
+            split_threshold_eur: threshold,
+          },
+        });
+      }
+      if (standardDirty && standardDraft) {
+        await saveStandard.mutateAsync(toStandard(standardDraft));
+        setStandardDraft(null);
+      }
+      toast.show("Einstellungen gespeichert", "ok");
+    } catch (error) {
+      toast.show(errorText(error), "error");
+    }
+  }
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-6 p-4 sm:p-6">
@@ -167,6 +224,14 @@ export function SettingsRoute() {
           <Spinner />
         )}
       </section>
+
+      <StandardWeekSection
+        cells={standardCells}
+        error={standard.error}
+        onChange={changeStandard}
+      />
+
+      <StoresSection />
 
       <section className="card p-4">
         <SectionTitle>Einkauf</SectionTitle>
@@ -224,30 +289,17 @@ export function SettingsRoute() {
         </section>
       ))}
 
-      <div className="sticky bottom-0 flex items-center gap-2 border-t border-line
-                      bg-ground/95 py-3 backdrop-blur">
+      {/* Am Handy über der Navigationsleiste (App.tsx, sm:hidden) - sonst klebte der
+          Knopf unsichtbar darunter. */}
+      <div className="sticky bottom-[calc(3rem+env(safe-area-inset-bottom))] flex items-center
+                      gap-2 border-t border-line bg-ground/95 py-3 backdrop-blur sm:bottom-0">
         <button
           type="button"
-          disabled={!dirty || save.isPending}
-          onClick={() =>
-            save.mutate(
-              {
-                planner_weights: weights,
-                shopping: {
-                  ...settings.data!.shopping,
-                  leftover_shelf_life_days: shelfLife,
-                  split_threshold_eur: threshold,
-                },
-              },
-              {
-                onError: (error) => toast.show(errorText(error), "error"),
-                onSuccess: () => toast.show("Einstellungen gespeichert", "ok"),
-              },
-            )
-          }
+          disabled={!dirty || saving}
+          onClick={saveAll}
           className="btn-primary"
         >
-          {save.isPending ? "speichert …" : dirty ? "Speichern" : "gespeichert"}
+          {saving ? "speichert …" : dirty ? "Speichern" : "gespeichert"}
         </button>
         <button
           type="button"

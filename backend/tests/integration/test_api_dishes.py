@@ -73,6 +73,21 @@ def test_doubling_can_be_switched_off_on_a_two_portion_dish(client):
 
 
 
+def test_a_dish_can_be_marked_as_not_reheatable(client):
+    created = client.post("/api/dishes", json={"name": "Knusper-Tofu", "portions": 2}).json()
+    assert created["reheatable"] is True, "Standard: aufwärmbar"
+
+    dish_id = created["id"]
+    patched = client.patch(f"/api/dishes/{dish_id}", json={"reheatable": False}).json()
+    assert patched["reheatable"] is False
+    assert client.get("/api/dishes").json()[0]["reheatable"] is False
+
+    salad = client.post(
+        "/api/dishes", json={"name": "Salat", "portions": 2, "reheatable": False}
+    ).json()
+    assert salad["reheatable"] is False
+
+
 def test_single_portion_dishes_choose_their_factors(client):
     """Bei 1 Portion sind doppelt *und* dreifach zugleich wählbar."""
     ramen = client.post(

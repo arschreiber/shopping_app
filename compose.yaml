@@ -26,12 +26,16 @@ services:
       timeout: 5s
       start_period: 20s
 
-  # Phase 2 (general_plan.md §7): Angebots-Adapter für Edeka, Aldi Nord, Netto MD, Rewe.
-  # Nur im internen Compose-Netz erreichbar - die Abrufe laufen über die Heim-IP.
-  # Erst aktivieren, wenn Phase 1 drei Wochen im Alltag gehalten hat:
-  #   docker compose --profile offers up -d
+  # Phase 2 (general_plan.md §7): Korbunio holt die Prospekte - Rewe von rewe.de, Netto
+  # und Combi aus marktguru. Die Abrufe laufen über die Heim-IP.
+  #
+  # Nur im internen Compose-Netz erreichbar: Korbunio selbst hat keine Anmeldung, darum
+  # `expose` und nie `ports`. Feste Version statt `latest`: auf 0.1.57 ist das
+  # Antwortformat geprüft (backend/tests/contract/test_korbunio.py), und erst ab dort
+  # ist Combi dabei. Ein Update heißt: Version hier ändern, Vertragstest laufen lassen.
+  #   sudo docker compose --profile offers up -d
   korbunio:
-    image: ghcr.io/lesecuritae/korbunio:latest
+    image: ghcr.io/lesecuritae/korbunio:0.1.57
     container_name: mealplan-korbunio
     restart: unless-stopped
     profiles: ["offers"]
@@ -39,6 +43,9 @@ services:
       - "8000"
     environment:
       TZ: Europe/Berlin
+      SUPERMARKT_DATA_DIR: /data
+    volumes:
+      - korbunio-data:/data   # Markt-Zuordnungen und Wochen-Cache
 
   # HTTPS auf dem Tailnet-Hostnamen - nötig, sobald die PWA auf den Homescreen soll
   # (ARCHITECTURE.md §7: über http://<lan-ip> registriert kein Service-Worker).
@@ -60,3 +67,4 @@ services:
 
 volumes:
   caddy-data:
+  korbunio-data:

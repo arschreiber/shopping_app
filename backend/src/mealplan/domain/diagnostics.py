@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections import Counter
 
 from .eligibility import eligible
-from .enums import AssignmentKind, CategoryAxis, SlotSpecial, WarningLevel
+from .enums import AssignmentKind, CategoryAxis, SlotSpecial, TimeBudget, WarningLevel
 from .leftovers import PortionLedger
 from .model import Plan, PlanningSnapshot, PlanWarning
 
@@ -49,14 +49,14 @@ def _unfilled(plan: Plan, snap: PlanningSnapshot) -> list[PlanWarning]:
         if not slot.needs_cooking or slot.special is not SlotSpecial.NONE:
             continue
         if plan.get(slot.key).is_empty:
-            out.append(
-                PlanWarning(
-                    WarningLevel.WARN,
-                    "slot_empty",
-                    f"{slot.key}: noch nichts geplant ({slot.demand} Portionen offen)",
-                    slot.key,
-                )
+            # Bei "keine Zeit" hilft nicht "etwas wählen", sondern vorher mehr kochen.
+            text = (
+                f"{slot.key}: keine Zeit, aber keine Reste da - vorher "
+                f"{slot.demand} Portion(en) mehr kochen"
+                if slot.time_budget is TimeBudget.NONE
+                else f"{slot.key}: noch nichts geplant ({slot.demand} Portionen offen)"
             )
+            out.append(PlanWarning(WarningLevel.WARN, "slot_empty", text, slot.key))
     return out
 
 
@@ -172,6 +172,8 @@ def _small_pool(plan: Plan, snap: PlanningSnapshot) -> list[PlanWarning]:
     for slot in snap.slots:
         if not slot.needs_cooking or slot.special is not SlotSpecial.NONE:
             continue
+        if slot.time_budget is TimeBudget.NONE:
+            continue  # dort gibt es ohnehin nur Reste - eine Auswahl ist nicht gemeint
         count = len(candidates(slot, plan.without(slot.key), snap))
         if count < SMALL_POOL_THRESHOLD:
             out.append(

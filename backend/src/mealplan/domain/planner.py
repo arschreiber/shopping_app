@@ -27,6 +27,7 @@ from .model import (
     SlotKey,
     SlotSpec,
 )
+from .optimizer import optimize
 from .scoring import score, score_leftover
 
 MAX_LOCAL_SEARCH_ITERATIONS = 200
@@ -58,7 +59,9 @@ def candidates(
             continue
         if pool.portions < slot.demand:
             continue
-        breakdown = score_leftover(pool, slot, snap)
+        breakdown = score_leftover(
+            pool, slot, snap, repeat=_earlier_leftover_meal(plan, pool.source, slot.key)
+        )
         portions = min(pool.portions, slot.demand)
         out.append(
             Candidate(
@@ -109,6 +112,15 @@ def candidates(
     return eligible_only + rest
 
 
+def _earlier_leftover_meal(plan: Plan, source: SlotKey, key: SlotKey) -> bool:
+    """Isst eine frühere Mahlzeit schon Reste aus demselben Topf?"""
+    return any(
+        other.index < key.index and assignment.leftover_source == source
+        for other, assignment in plan.items()
+        if other != key
+    )
+
+
 def _is_ineligible(candidate: Candidate) -> bool:
     return candidate.assignment.score is None
 
@@ -154,9 +166,28 @@ def propose(
 
     `keep` sind Zuweisungen, die stehen bleiben sollen, ohne gepinnt zu sein - so
     funktioniert "nur leere Slots vorschlagen".
+
+    Der Optimierer plant die Woche als Ganzes (optimizer.py); der Greedy-Plan ist seine
+    Startlösung und bleibt, falls er keine bessere findet.
+    """
+    fixed: dict[SlotKey, Assignment] = {**(keep or {}), **(pinned or {})}
+    greedy = propose_greedy(snap, fixed, seed=seed)
+    found = optimize(snap, fixed, seed=seed, hint=greedy)
+    if found is None:
+        return greedy
+    best = rescore(found, snap)
+    return best if best.total_score() > greedy.total_score() else greedy
+
+
+def propose_greedy(
+    snap: PlanningSnapshot, fixed: dict[SlotKey, Assignment], *, seed: int = 0
+) -> Plan:
+    """Mahlzeit für Mahlzeit, die schwierigsten zuerst, danach paarweise tauschen.
+
+    Schnell und ordentlich, aber blind für Reste-Ketten: am Montagabend weiß er nicht,
+    dass ein 3er-Gericht den Dienstagmittag deckt.
     """
     rng = random.Random(seed)
-    fixed: dict[SlotKey, Assignment] = {**(keep or {}), **(pinned or {})}
 
     plan = Plan()
     ledger = PortionLedger(snap)
@@ -353,6 +384,7 @@ def rescore(plan: Plan, snap: PlanningSnapshot) -> Plan:
                 snap,
                 factor=assignment.factor,
                 ledger=ledger,
+                final=True,
             )
             out = out.with_(key, Assignment(**{**_as_dict(assignment), "score": breakdown}))
         elif assignment.kind is AssignmentKind.LEFTOVER and assignment.leftover_source:
@@ -362,7 +394,8 @@ def rescore(plan: Plan, snap: PlanningSnapshot) -> Plan:
                 if p.source == assignment.leftover_source
             ]
             if pools:
-                breakdown = score_leftover(pools[0], slot, snap)
+                repeat = _earlier_leftover_meal(plan, assignment.leftover_source, key)
+                breakdown = score_leftover(pools[0], slot, snap, repeat=repeat)
                 out = out.with_(key, Assignment(**{**_as_dict(assignment), "score": breakdown}))
     return out
 

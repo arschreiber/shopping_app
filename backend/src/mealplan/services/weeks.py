@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from ..db import models as m
 from ..db.mappers import week_start
 from ..domain.enums import AssignmentKind, Meal, SlotSpecial, TimeBudget
+from . import settings_store
 from .articles import ValidationError
 
 
@@ -38,6 +39,82 @@ class SlotInput:
     packed_fresh: bool = False
 
 
+@dataclass(frozen=True, slots=True)
+class StandardSlot:
+    """Eine Mahlzeit der Standardwoche. Ohne gespeicherte Standardwoche: zwei zu Hause."""
+
+    day: int
+    meal: Meal
+    eaters_home: int = 2
+    packed_portions: int = 0
+    packed_fresh: bool = False
+    time_budget: TimeBudget = TimeBudget.NORMAL
+
+
+def _week_keys() -> list[tuple[int, Meal]]:
+    return [(day, meal) for day in range(7) for meal in (Meal.LUNCH, Meal.DINNER)]
+
+
+def standard_week(session: Session) -> list[StandardSlot]:
+    """Das Raster, mit dem eine neue Woche anfängt - immer alle 14 Mahlzeiten.
+
+    Was nicht gespeichert ist, steht auf dem Standard. So bleibt eine Standardwoche gültig,
+    auch wenn sie vor einer Erweiterung gespeichert wurde.
+    """
+    stored = {
+        (row["day"], row["meal"]): row
+        for row in settings_store.get(session, settings_store.KEY_STANDARD_WEEK, []) or []
+    }
+    week = []
+    for day, meal in _week_keys():
+        row = stored.get((day, meal.value))
+        if row is None:
+            week.append(StandardSlot(day, meal))
+            continue
+        week.append(
+            StandardSlot(
+                day,
+                meal,
+                eaters_home=row["eaters_home"],
+                packed_portions=row["packed_portions"],
+                packed_fresh=row["packed_fresh"],
+                time_budget=TimeBudget(row["time_budget"]),
+            )
+        )
+    return week
+
+
+def save_standard_week(session: Session, slots: list[StandardSlot]) -> list[StandardSlot]:
+    """Standardwoche speichern. Schon angelegte Wochen bleiben, wie sie sind."""
+    seen: set[tuple[int, Meal]] = set()
+    rows = []
+    for slot in slots:
+        key = (slot.day, slot.meal)
+        if not 0 <= slot.day <= 6:
+            raise ValidationError(f"Tag {slot.day} gibt es nicht")
+        if key in seen:
+            raise ValidationError(f"Mahlzeit {slot.day}/{slot.meal.value} doppelt")
+        seen.add(key)
+        if not 0 <= slot.eaters_home <= 2:
+            raise ValidationError("Esser zu Hause muss zwischen 0 und 2 liegen")
+        if not 0 <= slot.packed_portions <= 2:
+            raise ValidationError("Mitnehm-Portionen müssen zwischen 0 und 2 liegen")
+        rows.append(
+            {
+                "day": slot.day,
+                "meal": slot.meal.value,
+                "eaters_home": slot.eaters_home,
+                "packed_portions": slot.packed_portions,
+                # Wie im Raster: ohne Mitnehm-Portion kein verstecktes "frisch".
+                "packed_fresh": slot.packed_fresh and slot.packed_portions > 0,
+                "time_budget": slot.time_budget.value,
+            }
+        )
+    settings_store.put(session, settings_store.KEY_STANDARD_WEEK, rows)
+    session.flush()
+    return standard_week(session)
+
+
 def parse_iso(iso: str) -> tuple[int, int]:
     """`2026-W37` -> (2026, 37)."""
     try:
@@ -61,7 +138,7 @@ def get_week(session: Session, iso: str) -> m.Week | None:
 
 
 def get_or_create_week(session: Session, iso: str) -> m.Week:
-    """Eine Woche existiert erst, wenn sie geöffnet wird - dann mit Standardraster.
+    """Eine Woche existiert erst, wenn sie geöffnet wird - dann mit der Standardwoche.
 
     Öffnen Laptop und Handy dieselbe neue Woche im selben Moment, finden beide sie noch
     nicht und legen beide an. `ON CONFLICT DO NOTHING` lässt den zweiten dann leer
@@ -81,9 +158,18 @@ def get_or_create_week(session: Session, iso: str) -> m.Week:
     week = get_week(session, iso)
     assert week is not None  # gerade angelegt oder vom Gleichzeitigen übernommen
     if created:
-        for day in range(7):
-            for meal in (Meal.LUNCH, Meal.DINNER):
-                session.add(m.Slot(week_id=week.id, day=day, meal=meal.value))
+        for template in standard_week(session):
+            session.add(
+                m.Slot(
+                    week_id=week.id,
+                    day=template.day,
+                    meal=template.meal.value,
+                    eaters_home=template.eaters_home,
+                    packed_portions=template.packed_portions,
+                    packed_fresh=template.packed_fresh,
+                    time_budget=template.time_budget.value,
+                )
+            )
         session.flush()
         session.refresh(week)
     return week

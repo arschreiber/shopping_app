@@ -15,6 +15,7 @@ dependencies = [
     "apscheduler>=3.11",
     "typer>=0.15",
     "bring-api>=1.1.2",
+    "ortools>=9.12",
 ]
 
 [project.optional-dependencies]
@@ -24,6 +25,7 @@ dev = [
     "hypothesis>=6.123",
     "respx>=0.22",
     "ruff>=0.9",
+    "pytest-xdist>=3.6",
 ]
 
 [project.scripts]
@@ -41,7 +43,10 @@ pythonpath = ["src"]
 testpaths = ["tests"]
 markers = [
     "live: trifft echte externe Dienste (Bring!, Korbunio) - nur manuell",
+    "optimizer: plant mit dem Optimierer und dem Budget der App (sonst Greedy-Plan)",
 ]
+# Parallel auf allen Kernen; `-n0` für einen einzelnen Test im Debugger.
+addopts = "-n auto"
 filterwarnings = ["error::DeprecationWarning:mealplan.*"]
 
 [tool.ruff]

@@ -29,7 +29,14 @@ class _StubCatalog:
 
 @pytest.fixture
 def settings(tmp_path: Path) -> Settings:
-    return Settings(data_dir=tmp_path, bring_sync="text", catalog_autofetch=False)
+    # Ausdrücklich ohne Angebotsquelle und Scheduler - egal, was in der .env steht.
+    return Settings(
+        data_dir=tmp_path,
+        bring_sync="text",
+        catalog_autofetch=False,
+        korbunio_url=None,
+        offer_fetch_enabled=False,
+    )
 
 
 @pytest.fixture

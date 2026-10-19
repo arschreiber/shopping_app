@@ -21,6 +21,11 @@ import type {
   Settings,
   ShoppingList,
   SlotIn,
+  StandardSlot,
+  Store,
+  StoreIn,
+  StorePatch,
+  StoreStatus,
   SyncRun,
   Week,
 } from "./client";
@@ -37,7 +42,10 @@ export const keys = {
   health: ["health"] as const,
   runs: ["sync-runs"] as const,
   settings: ["settings"] as const,
+  standardWeek: ["settings", "standard-week"] as const,
   offers: ["offers"] as const,
+  offerStatus: ["offers", "status"] as const,
+  stores: ["stores"] as const,
 };
 
 // ------------------------------------------------------------------------------- Woche
@@ -309,6 +317,12 @@ export type ArticleBody = {
   is_staple?: boolean;
   is_watchlist?: boolean;
   aliases?: string[];
+  max_unit_price?: string | null; // Richtpreis; null = jedes Angebot zählt
+  min_offer_amount?: string | null; // Angebote erst ab dieser Menge; null = jede Packung
+  regular_pack_amount?: string | null; // Normalpreis: Menge in der Einheit des Artikels …
+  regular_pack_price?: string | null; // … und was sie ohne Angebot kostet
+  regular_pack_unit?: "STUECK" | null; // Menge zählt Stück statt g/ml
+  piece_size?: string | null; // 1 Stück ≈ so viel g/ml
 };
 
 export function useSaveArticle() {
@@ -502,9 +516,86 @@ export function useSaveSettings() {
   });
 }
 
+/** Das Raster, mit dem neue Wochen anfangen. */
+export function useStandardWeek() {
+  return useQuery({
+    queryKey: keys.standardWeek,
+    queryFn: () =>
+      unwrap<StandardSlot[]>(api.GET("/api/settings/standard-week", {})),
+  });
+}
+
+export function useSaveStandardWeek() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (slots: StandardSlot[]) =>
+      unwrap<StandardSlot[]>(api.PUT("/api/settings/standard-week", { body: { slots } })),
+    onSuccess: (saved) => client.setQueryData(keys.standardWeek, saved),
+  });
+}
+
 export function useOffers() {
   return useQuery({
     queryKey: keys.offers,
     queryFn: () => unwrap<Offer[]>(api.GET("/api/offers", {})),
   });
+}
+
+/** Stand pro Laden: letzter Abruf, welcher Markt, wie viele Angebote noch gelten. */
+export function useOfferStatus() {
+  return useQuery({
+    queryKey: keys.offerStatus,
+    queryFn: () => unwrap<StoreStatus[]>(api.GET("/api/offers/status", {})),
+  });
+}
+
+/** Der Knopf "Angebote abrufen" - dauert ein paar Sekunden pro Laden. */
+export function useFetchOffers() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () => unwrap<StoreStatus[]>(api.POST("/api/offers/fetch", {})),
+    onSuccess: (status) => {
+      client.setQueryData(keys.offerStatus, status);
+      client.invalidateQueries({ queryKey: keys.offers });
+      client.invalidateQueries({ queryKey: ["shopping"] });
+      client.invalidateQueries({ queryKey: ["candidates"] });
+    },
+  });
+}
+
+// ------------------------------------------------------------------------------- Läden
+
+export function useStores() {
+  return useQuery({
+    queryKey: keys.stores,
+    queryFn: () => unwrap<Store[]>(api.GET("/api/stores", {})),
+  });
+}
+
+/** Läden ändern heißt auch: andere Angebote, anderer Abruf-Stand. */
+function useStoreMutation<TVars>(run: (vars: TVars) => Promise<unknown>) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: run,
+    onSuccess: () => {
+      client.invalidateQueries({ queryKey: keys.stores });
+      client.invalidateQueries({ queryKey: keys.offers });
+    },
+  });
+}
+
+export function useCreateStore() {
+  return useStoreMutation((body: StoreIn) => unwrap(api.POST("/api/stores", { body })));
+}
+
+export function useUpdateStore() {
+  return useStoreMutation(({ id, ...body }: StorePatch & { id: number }) =>
+    unwrap(api.PATCH("/api/stores/{store_id}", { params: { path: { store_id: id } }, body })),
+  );
+}
+
+export function useDeleteStore() {
+  return useStoreMutation((id: number) =>
+    unwrap(api.DELETE("/api/stores/{store_id}", { params: { path: { store_id: id } } })),
+  );
 }

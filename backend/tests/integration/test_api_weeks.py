@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 ISO = "2026-W37"
 
 
@@ -64,6 +66,7 @@ def test_stale_version_is_a_conflict(client):
     assert response.json()["current_version"] == week["version"] + 1
 
 
+@pytest.mark.optimizer
 def test_propose_fills_the_week_with_reasons(client, seeded):
     week = client.post(f"/api/weeks/{ISO}/propose", json={}).json()
     filled = [s for s in week["slots"] if s["assignment"]]
@@ -192,7 +195,9 @@ def test_reroll_changes_one_slot(client, seeded):
 
 
 def test_reroll_says_so_when_the_pool_is_exhausted(client, seeded):
-    """Bei 14 Gerichten auf 14 Slots gibt es keine Alternative - das muss man erfahren."""
+    """Bei 14 Gerichten auf 14 Slots gibt es keine Alternative - das muss man erfahren.
+    Ohne Reste: sonst kocht der Planer weniger als 14 Gerichte und es bleiben welche."""
+    client.put("/api/settings", json={"planner_weights": {"leftover_covers_demand": -100}})
     week = client.post(f"/api/weeks/{ISO}/propose", json={}).json()
     target = next(s for s in week["slots"] if s["assignment"])
     response = client.post(

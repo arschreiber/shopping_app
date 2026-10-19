@@ -19,13 +19,13 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from .api.routers import articles, dishes, shopping, system, weeks
+from .api.routers import articles, dishes, shopping, stores, system, weeks
 from .config import Settings, get_settings
 from .db.session import get_engine, set_engine
 from .integrations.bring.bring_sync import BringSync
 from .integrations.bring.text_export import TextExportSync
 from .integrations.catalog.bring_catalog import FileBringCatalog, refresh_cache
-from .ports import ShoppingListSync
+from .ports import OfferSource, ShoppingListSync
 from .services.articles import ValidationError
 from .services.weeks import ConflictError
 
@@ -57,6 +57,15 @@ def build_sync(settings: Settings) -> ShoppingListSync:
     return TextExportSync()
 
 
+def build_offer_source(settings: Settings) -> OfferSource | None:
+    """Ohne Korbunio-URL gibt es keine Angebote - alles andere läuft normal."""
+    if not settings.korbunio_url:
+        return None
+    from .integrations.offers.korbunio import KorbunioOfferSource
+
+    return KorbunioOfferSource(settings.korbunio_url)
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
     logging.basicConfig(
@@ -74,6 +83,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             LOG.info("Bring!-Katalog geladen: %s Einträge", count)
         app.state.catalog = getattr(app.state, "catalog", None) or catalog
         app.state.sync = getattr(app.state, "sync", None) or build_sync(settings)
+        if not hasattr(app.state, "offer_source"):
+            app.state.offer_source = build_offer_source(settings)
         LOG.info(
             "Bereit auf %s:%s - Sync-Adapter: %s (keine Auth, nur Heimnetz)",
             settings.host,
@@ -81,10 +92,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             app.state.sync.name,
         )
         scheduler = None
-        if settings.offer_fetch_enabled and settings.korbunio_url:
+        if settings.offer_fetch_enabled and app.state.offer_source is not None:
             from .jobs.scheduler import start_scheduler
 
-            scheduler = start_scheduler(settings)
+            scheduler = start_scheduler(settings, app.state.offer_source)
         try:
             yield
         finally:
@@ -114,7 +125,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def _key_error(_request: Request, exc: KeyError) -> JSONResponse:
         return JSONResponse(status_code=404, content={"detail": f"nicht gefunden: {exc}"})
 
-    for router in (articles.router, dishes.router, weeks.router, shopping.router, system.router):
+    for router in (
+        articles.router,
+        dishes.router,
+        weeks.router,
+        shopping.router,
+        stores.router,
+        system.router,
+    ):
         app.include_router(router)
 
     if STATIC_DIR.exists():

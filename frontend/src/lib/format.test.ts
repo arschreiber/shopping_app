@@ -3,7 +3,16 @@
  * gelesen, und 1500 g liest niemand als "1,5 kg", wenn dort 1500 g steht.
  */
 import { describe, expect, it } from "vitest";
-import { formatEuro, formatNumber, formatQuantity, formatScore, stars } from "./format";
+import {
+  formatEuro,
+  formatNormalDiff,
+  formatPackAmount,
+  formatNumber,
+  formatQuantity,
+  formatScore,
+  formatUnitPrice,
+  stars,
+} from "./format";
 
 describe("formatQuantity", () => {
   it("skaliert Gramm ab 1000 auf Kilo", () => {
@@ -55,5 +64,38 @@ describe("stars", () => {
   it("füllt auf fünf auf", () => {
     expect(stars(3)).toBe("★★★☆☆");
     expect(stars(null)).toBe("");
+  });
+});
+
+describe("formatUnitPrice", () => {
+  it("hängt die Grundpreis-Einheit an den Euro-Betrag", () => {
+    expect(formatUnitPrice("5.96", "kg")).toBe("5,96 €/kg");
+    expect(formatUnitPrice(0.25, "Stück")).toBe("0,25 €/Stück");
+  });
+
+  it("lässt einen fehlenden Grundpreis leer statt 0 zu zeigen", () => {
+    expect(formatUnitPrice(null, "kg")).toBe("");
+    expect(formatUnitPrice("1.00", null)).toBe("");
+  });
+});
+
+describe("formatPackAmount", () => {
+  it("zeigt die Packung in der Einheit des Artikels", () => {
+    expect(formatPackAmount("300", "kg")).toBe("300 g");
+    expect(formatPackAmount("1250", "l")).toBe("1.250 ml");
+    expect(formatPackAmount("2", "Stück")).toBe("2 Stück");
+    expect(formatPackAmount(null, "kg")).toBe("");
+  });
+});
+
+describe("formatNormalDiff", () => {
+  it("sagt, wie weit ein Angebot vom Normalpreis weg ist", () => {
+    expect(formatNormalDiff("-1.20", -19, "kg")).toBe("−1,20 €/kg ggü. normal (−19 %)");
+    expect(formatNormalDiff("0.80", 16, "kg")).toBe("+0,80 €/kg ggü. normal (+16 %)");
+    expect(formatNormalDiff("0", 0, "l")).toBe("wie normal");
+  });
+
+  it("bleibt leer, wenn es nichts zu vergleichen gibt", () => {
+    expect(formatNormalDiff(null, null, "kg")).toBe("");
   });
 });

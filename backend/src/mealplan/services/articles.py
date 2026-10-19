@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
@@ -13,6 +15,17 @@ from ..matching.normalize import suggest as suggest_names
 
 # Nährwerte je kanonischer Einheit (100 g / 100 ml / 1 Stück), alle optional.
 NUTRITION_FIELDS = ("kcal", "carbs_g", "fat_g", "protein_g")
+# Felder, bei denen `None` eine Aussage ist und darum durchkommen muss
+CLEARABLE_FIELDS = (
+    *NUTRITION_FIELDS,
+    "bring_catalog_name",  # leer: auf Bring! unter dem Artikelnamen
+    "max_unit_price",
+    "min_offer_amount",
+    "regular_pack_amount",
+    "regular_pack_price",
+    "regular_pack_unit",
+    "piece_size",
+)
 
 
 class ValidationError(ValueError):
@@ -43,6 +56,12 @@ def create_article(
     is_staple: bool = False,
     is_watchlist: bool = False,
     aliases: list[str] | None = None,
+    max_unit_price: Decimal | None = None,
+    min_offer_amount: Decimal | None = None,
+    regular_pack_amount: Decimal | None = None,
+    regular_pack_price: Decimal | None = None,
+    regular_pack_unit: str | None = None,
+    piece_size: Decimal | None = None,
     **nutrition,
 ) -> m.Article:
     name = canonical_name.strip()
@@ -66,12 +85,19 @@ def create_article(
         bring_category=bring_category,
         is_staple=is_staple,
         is_watchlist=is_watchlist,
+        max_unit_price=max_unit_price,
+        min_offer_amount=min_offer_amount,
+        regular_pack_amount=regular_pack_amount,
+        regular_pack_price=regular_pack_price,
+        regular_pack_unit=regular_pack_unit,
+        piece_size=piece_size,
         **{
             field: value
             for field, value in nutrition.items()
             if field in NUTRITION_FIELDS
         },
     )
+    _check_regular_price(article)
     session.add(article)
     session.flush()
     for alias in aliases or []:
@@ -87,20 +113,56 @@ def update_article(session: Session, article_id: int, **changes) -> m.Article:
             raise ValidationError(f"'{unit.value}' ist keine kanonische Einheit")
         _guard_unit_change(session, article, unit)
         article.unit = unit.value
+        if unit is Unit.STUECK:
+            # Ein Stück-Artikel *ist* in Stück - Stückgewicht und "pro Stück" sind leer.
+            article.piece_size = None
+            article.regular_pack_unit = None
+            changes.pop("piece_size", None)
+            changes.pop("regular_pack_unit", None)
     aliases = changes.pop("aliases", None)
     for field, value in changes.items():
         if not hasattr(article, field):
             continue
         # Bei Nährwerten ist `None` eine Aussage ("nicht erfasst") und `0` eine andere
-        # ("enthält nichts davon") - beide müssen durchkommen.
-        if field in NUTRITION_FIELDS or value is not None:
+        # ("enthält nichts davon") - beide müssen durchkommen. Beim Richtpreis heißt
+        # `None` "jedes Angebot zählt".
+        if field in CLEARABLE_FIELDS or value is not None:
             setattr(article, field, value)
+    _check_regular_price(article)
     if aliases is not None:
         article.aliases.clear()
         session.flush()
         for alias in aliases:
             add_alias(session, article, alias)
     return article
+
+
+def _check_regular_price(article: m.Article) -> None:
+    """Normalpreis = Menge *und* Preis ("250 g für 1,29 €") - eins allein sagt nichts.
+
+    Pro Stück ("1 Stück für 0,79 €") geht er bei Gramm- und Milliliter-Artikeln nur mit
+    Stückgewicht; bei Stück-Artikeln ist "pro Stück" ohnehin die Einheit.
+    """
+    name = article.canonical_name
+    unit = Unit(article.unit)
+    if article.piece_size is not None:
+        if unit is Unit.STUECK:
+            raise ValidationError(f"{name}: ein Stück-Artikel braucht kein Stückgewicht")
+        if article.piece_size <= 0:
+            raise ValidationError(f"{name}: das Stückgewicht muss über 0 sein")
+    amount, price = article.regular_pack_amount, article.regular_pack_price
+    if (amount is None) != (price is None):
+        raise ValidationError(f"{name}: der Normalpreis braucht Menge und Preis")
+    if amount is not None and (amount <= 0 or price <= 0):
+        raise ValidationError(f"{name}: Menge und Preis müssen über 0 sein")
+    if amount is None or unit is Unit.STUECK:
+        article.regular_pack_unit = None  # ohne Normalpreis bzw. ohnehin in Stück
+    elif article.regular_pack_unit not in (None, Unit.STUECK.value):
+        raise ValidationError(f"{name}: unbekannte Einheit für den Normalpreis")
+    elif article.regular_pack_unit == Unit.STUECK.value and article.piece_size is None:
+        raise ValidationError(
+            f"{name}: für einen Normalpreis pro Stück braucht der Artikel ein Stückgewicht"
+        )
 
 
 def _guard_unit_change(session: Session, article: m.Article, unit: Unit) -> None:
@@ -268,6 +330,16 @@ def merge_articles(
         target.is_watchlist = target.is_watchlist or source.is_watchlist
         if not target.bring_catalog_name and source.bring_catalog_name:
             target.bring_catalog_name = source.bring_catalog_name
+        if target.max_unit_price is None and source.max_unit_price is not None:
+            target.max_unit_price = source.max_unit_price
+        if target.min_offer_amount is None and source.min_offer_amount is not None:
+            target.min_offer_amount = source.min_offer_amount
+        if target.piece_size is None and source.piece_size is not None:
+            target.piece_size = source.piece_size
+        if target.regular_pack_amount is None and source.regular_pack_amount is not None:
+            target.regular_pack_amount = source.regular_pack_amount
+            target.regular_pack_price = source.regular_pack_price
+            target.regular_pack_unit = source.regular_pack_unit
         session.delete(source)
 
     session.flush()
