@@ -16,11 +16,12 @@ import {
   type DragEndEvent,
 } from "@dnd-kit/core";
 import type { ReactNode } from "react";
-import type { Meal, Slot, SlotIn, Warning, Week } from "../../api/client";
+import type { Meal, Slot, SlotIn, Warning, Week, WeekNutrition } from "../../api/client";
 import { droppedOnSave, dropsIfNobody } from "../../lib/grid";
 import { SlotCard } from "./SlotCard";
 import { DayOffButton, SlotSettings } from "./SlotSettings";
 import { WeekGrid } from "./WeekGrid";
+import { DayTotal } from "./WeekNutrition";
 
 export type BoardEditing = {
   draft: SlotIn[];
@@ -36,6 +37,9 @@ export function Board({
   onClear,
   onSwap,
   editing,
+  nutrition,
+  selectedDay,
+  onSelectDay,
 }: {
   week: Week;
   iso: string;
@@ -46,6 +50,10 @@ export function Board({
   onSwap: (from: { day: number; meal: Meal }, to: { day: number; meal: Meal }) => void;
   /** Gesetzt = Raster bearbeiten: Einstellungen statt Gerichte in den Zellen. */
   editing?: BoardEditing;
+  /** Ansicht "Nährwerte": Werte je Gericht und Summe je Tag. */
+  nutrition?: WeekNutrition | null;
+  selectedDay?: number | null;
+  onSelectDay?: (day: number) => void;
 }) {
   const sensors = useSensors(
     // 6px Schwelle: sonst wird jeder Tipp am Handy als Drag gewertet.
@@ -92,6 +100,12 @@ export function Board({
         onPin={(pinned) => onPin(slot, pinned)}
         onReroll={() => onReroll(slot)}
         onClear={() => onClear(slot)}
+        nutrition={
+          nutrition && slot.assignment && slot.assignment.kind !== "PANTRY"
+            ? (nutrition.meals.find((entry) => entry.day === day && entry.meal === meal) ??
+              null)
+            : undefined
+        }
       />
     );
   }
@@ -116,6 +130,19 @@ export function Board({
                   cells={editing.draft}
                   day={day}
                   onChange={(meal, changes) => editing.onChange(day, meal, changes)}
+                />
+              )
+            : undefined
+        }
+        footerLabel="Tag"
+        dayFooter={
+          nutrition && !editing
+            ? (day) => (
+                <DayTotal
+                  day={nutrition.days[day]}
+                  mealsPerDay={nutrition.meals_per_day}
+                  selected={selectedDay === day}
+                  onSelect={() => onSelectDay?.(day)}
                 />
               )
             : undefined

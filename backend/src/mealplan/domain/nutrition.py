@@ -92,6 +92,9 @@ class DishNutrition:
     counted_ids: tuple[int, ...] = ()
     missing_data_ids: tuple[int, ...] = ()  # Artikel ohne Nährwerte
     open_quantity_ids: tuple[int, ...] = ()  # Zeile ohne Menge, Werte nicht alle null
+    # Was jede gezählte Zutat je Portion beiträgt (gerundet) - für "woher kommt das?".
+    # Mehrere Zeilen desselben Artikels sind zusammengefasst.
+    contributions: tuple[tuple[int, Nutrients], ...] = ()
 
     @property
     def gap_count(self) -> int:
@@ -119,6 +122,7 @@ def dish_nutrition(
     Wert je Portion. Darum rechnet diese Funktion bewusst mit dem Grundrezept.
     """
     total = Nutrients()
+    shares: dict[int, Nutrients] = {}
     counted: list[int] = []
     missing: list[int] = []
     open_quantity: list[int] = []
@@ -138,11 +142,18 @@ def dish_nutrition(
 
         amount = Quantity(line.quantity, line.unit).to(facts.unit).amount
         assert amount is not None  # Menge ist gesetzt, `to` erhält das
-        total = total + facts.per_basis.scaled(amount / BASIS_AMOUNT[facts.unit])
+        part = facts.per_basis.scaled(amount / BASIS_AMOUNT[facts.unit])
+        total = total + part
+        shares[line.article_id] = shares.get(line.article_id, Nutrients()) + part
         counted.append(line.article_id)
 
     divisor = Decimal(portions if portions > 0 else 1)
+    contributions = tuple(
+        (article_id, part.scaled(Decimal(1) / divisor).rounded())
+        for article_id, part in shares.items()
+    )
     return DishNutrition(
+        contributions=contributions,
         total=total.rounded(),
         per_portion=total.scaled(Decimal(1) / divisor).rounded(),
         ingredient_count=len(ingredients),

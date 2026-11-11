@@ -8,11 +8,14 @@ import {
 import { api, unwrap } from "./client";
 import type {
   Article,
+  BlsFood,
+  MicroField,
   DishNutrition,
   Candidate,
   Category,
   Dish,
   DishIn,
+  DishRoles,
   DishSummary,
   Health,
   Meal,
@@ -28,10 +31,16 @@ import type {
   StoreStatus,
   SyncRun,
   Week,
+  WeekNutrition,
+  NutrientDef,
+  NutrientRanking,
 } from "./client";
 
 export const keys = {
   week: (iso: string) => ["week", iso] as const,
+  weekNutrition: (iso: string) => ["week", iso, "nutrition"] as const,
+  nutrients: ["nutrients"] as const,
+  nutrientRanking: (code: string, basis: string) => ["nutrients", code, basis] as const,
   candidates: (iso: string, day: number, meal: Meal) =>
     ["candidates", iso, day, meal] as const,
   dishes: (q?: string) => ["dishes", q ?? ""] as const,
@@ -58,6 +67,41 @@ export function useWeek(iso: string, options?: Partial<UseQueryOptions<Week>>) {
   });
 }
 
+/** Nährwerte der Woche - je Tag für eine Person und Ø je Portion. Nur auf Wunsch geladen. */
+export function useWeekNutrition(iso: string, enabled: boolean) {
+  return useQuery({
+    queryKey: keys.weekNutrition(iso),
+    enabled,
+    queryFn: () =>
+      unwrap<WeekNutrition>(
+        api.GET("/api/weeks/{iso}/nutrition", { params: { path: { iso } } }),
+      ),
+  });
+}
+
+/** Alle Nährstoffe in Tabellen-Reihenfolge: Makros, dann Mikros. */
+export function useNutrientDefs() {
+  return useQuery({
+    queryKey: keys.nutrients,
+    staleTime: Infinity,
+    queryFn: () => unwrap<NutrientDef[]>(api.GET("/api/nutrients", {})),
+  });
+}
+
+/** Artikel nach Menge eines Nährstoffs - je 100 g/ml oder je 100 kcal. */
+export function useNutrientRanking(code: string | null, basis: "mass" | "kcal") {
+  return useQuery({
+    queryKey: keys.nutrientRanking(code ?? "", basis),
+    enabled: code !== null,
+    queryFn: () =>
+      unwrap<NutrientRanking>(
+        api.GET("/api/nutrients/{code}/articles", {
+          params: { path: { code: code! }, query: { basis } },
+        }),
+      ),
+  });
+}
+
 export function useCandidates(iso: string, day: number, meal: Meal, enabled: boolean) {
   return useQuery({
     queryKey: keys.candidates(iso, day, meal),
@@ -81,6 +125,7 @@ function useWeekMutation<TVars>(
     mutationFn: run,
     onSuccess: (week) => {
       client.setQueryData(keys.week(iso), week);
+      client.invalidateQueries({ queryKey: keys.weekNutrition(iso) });
       client.invalidateQueries({ queryKey: keys.shopping(iso) });
       // Der Plan ist zugleich der Koch-Verlauf: "vor N Wo." bei den Gerichten und die
       // Abwechslung in den Kandidaten der anderen Wochen hängen an ihm.
@@ -323,6 +368,7 @@ export type ArticleBody = {
   regular_pack_price?: string | null; // … und was sie ohne Angebot kostet
   regular_pack_unit?: "STUECK" | null; // Menge zählt Stück statt g/ml
   piece_size?: string | null; // 1 Stück ≈ so viel g/ml
+  label_micros?: Record<string, string> | null; // Mikros vom Etikett; null = keine
 };
 
 export function useSaveArticle() {
@@ -366,6 +412,62 @@ export function useMergeArticles() {
       client.invalidateQueries({ queryKey: ["dishes"] });
       client.invalidateQueries({ queryKey: ["shopping"] });
       client.invalidateQueries({ queryKey: ["week"] });
+      client.invalidateQueries({ queryKey: ["nutrients"] });
+    },
+  });
+}
+
+/** Vorschläge für die BLS-Referenz eines Artikels - übernommen wird nur per Klick. */
+export function useBlsSuggestions(articleId: number, enabled: boolean) {
+  return useQuery({
+    queryKey: ["bls-suggestions", articleId],
+    queryFn: () =>
+      unwrap<BlsFood[]>(
+        api.GET("/api/articles/{article_id}/bls-suggestions", {
+          params: { path: { article_id: articleId } },
+        }),
+      ),
+    enabled,
+    staleTime: 5 * 60_000,
+  });
+}
+
+/** Die Etikett-Felder - Reihenfolge, Namen und Einheiten kommen vom Server. */
+export function useMicroFields() {
+  return useQuery({
+    queryKey: ["micro-fields"],
+    queryFn: () => unwrap<MicroField[]>(api.GET("/api/articles/micro-fields")),
+    staleTime: Infinity,
+  });
+}
+
+export async function searchBls(q: string): Promise<BlsFood[]> {
+  return unwrap<BlsFood[]>(api.GET("/api/articles/bls-search", { params: { query: { q } } }));
+}
+
+/** Referenz setzen (`code`), bewusst keine (`skip`) oder lösen (beides leer). */
+export function useSetBls() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: {
+      id: number;
+      code?: string | null;
+      grams_per_unit?: string | null;
+      skip?: boolean;
+    }) =>
+      unwrap<Article>(
+        api.PUT("/api/articles/{article_id}/bls", {
+          params: { path: { article_id: vars.id } },
+          body: {
+            code: vars.code ?? null,
+            grams_per_unit: vars.grams_per_unit ?? null,
+            skip: vars.skip ?? false,
+          },
+        }),
+      ),
+    onSuccess: () => {
+      client.invalidateQueries({ queryKey: ["articles"] });
+      client.invalidateQueries({ queryKey: ["dishes"] });
     },
   });
 }
@@ -389,6 +491,17 @@ export async function previewNutrition(
   return unwrap<DishNutrition>(
     api.POST("/api/nutrition/preview", { body: { portions, ingredients } }),
   );
+}
+
+/** Beilage und Protein aus den Zutaten - gelernt aus den gespeicherten Gerichten. */
+export async function detectRoles(
+  ingredients: { article_id: number; quantity: string | null; unit: Article["unit"] }[],
+): Promise<DishRoles> {
+  return unwrap<DishRoles>(api.POST("/api/dishes/roles", { body: { ingredients } }));
+}
+
+export async function fetchDish(id: number): Promise<Dish> {
+  return unwrap<Dish>(api.GET("/api/dishes/{dish_id}", { params: { path: { dish_id: id } } }));
 }
 
 export async function parseIngredients(text: string): Promise<ParsedLine[]> {

@@ -9,7 +9,7 @@ from ...domain.model import Assignment, SlotKey
 from ...services import planning as service
 from ...services import weeks as weeks_service
 from ..deps import SessionDep
-from ..mapping import candidate_out, warning_out, week_out
+from ..mapping import candidate_out, warning_out, week_nutrition_out, week_out
 from ..schemas.common import (
     AssignmentIn,
     CancelIn,
@@ -18,6 +18,7 @@ from ..schemas.common import (
     PinIn,
     ProposeIn,
     WarningOut,
+    WeekNutritionOut,
     WeekOut,
 )
 
@@ -150,6 +151,15 @@ def clear_week(session: SessionDep, iso: str, keep_pinned: bool = True) -> WeekO
     week = weeks_service.get_or_create_week(session, iso)
     weeks_service.clear_assignments(session, week, keep_pinned=keep_pinned)
     return _week_response(session, iso)
+
+
+@router.get("/{iso}/nutrition", response_model=WeekNutritionOut)
+def week_nutrition(session: SessionDep, iso: str) -> WeekNutritionOut:
+    """Je Tag für eine Person (Mittag + Abend) und Ø je Portion (domain/week_nutrition.py)."""
+    from ...services import week_nutrition as nutrition_service
+
+    week, result, names = nutrition_service.for_week(session, iso)
+    return week_nutrition_out(week, result, names)
 
 
 @router.get("/{iso}/diagnostics", response_model=list[WarningOut])

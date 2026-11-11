@@ -40,6 +40,41 @@ class NutrientsOut(Dto):
     protein_g: Decimal
 
 
+class MicroValueOut(Dto):
+    code: str
+    label: str
+    unit: str
+    group: str
+    amount: Decimal  # je Portion, in `unit`
+    share: Decimal | None = None  # % vom Tageswert der Referenzperson
+    kind: Literal["target", "limit"] | None = None  # mindestens / höchstens
+    partial: bool = False  # nicht für jede gezählte Zutat bekannt
+
+
+class DishMicrosOut(Dto):
+    """Mikronährstoffe je Portion aus dem BLS - mit denselben Lücken-Listen."""
+
+    values: list[MicroValueOut]
+    is_complete: bool
+    has_any: bool
+    counted: int
+    ingredient_count: int
+    missing_article_ids: list[int]  # ohne BLS-Referenz
+    skipped_article_ids: list[int]  # bewusst ohne Referenz
+    open_quantity_article_ids: list[int]  # ohne Menge oder Stückgewicht
+    reference_person: str
+    attribution: str
+
+
+class IngredientShareOut(Dto):
+    """Was eine Zutat je Portion beiträgt - Makros (`kcal`, `carbs_g`, `fat_g`,
+    `protein_g`) und Mikros (BLS-Codes), jeweils in der Anzeigeeinheit. Fehlt ein Schlüssel,
+    ist der Wert für diese Zutat unbekannt."""
+
+    article_id: int
+    values: dict[str, Decimal]
+
+
 class DishNutritionOut(Dto):
     """Nährwerte je Portion plus die Lücken, die dahinter stecken."""
 
@@ -51,6 +86,108 @@ class DishNutritionOut(Dto):
     ingredient_count: int
     missing_article_ids: list[int]
     open_quantity_article_ids: list[int]
+    # Nur in der Einzelansicht und der Vorschau - die Gerichte-Liste braucht sie nicht.
+    micros: DishMicrosOut | None = None
+    breakdown: list[IngredientShareOut] = Field(default_factory=list)
+
+
+class NutritionSumOut(Dto):
+    """Summe (ein Tag, eine Person) oder Ø (je Portion) mehrerer Mahlzeiten."""
+
+    nutrients: NutrientsOut
+    micros: list[MicroValueOut]
+    meal_count: int
+    complete: bool  # sonst "mindestens so viel"
+
+
+class MealNutritionOut(Dto):
+    day: int
+    meal: Meal
+    dish_id: int
+    dish_name: str
+    per_portion: NutrientsOut
+    complete: bool
+
+
+class DayNutritionOut(NutritionSumOut):
+    day: int
+    date: date
+
+
+class WeekNutritionOut(Dto):
+    iso: str
+    meals_per_day: int
+    meals: list[MealNutritionOut]
+    days: list[DayNutritionOut]
+    average: NutritionSumOut  # Ø je Portion über alle gezählten Mahlzeiten
+    reference_person: str
+    attribution: str
+
+
+class NutrientDefOut(Dto):
+    code: str
+    label: str
+    unit: str
+    group: str
+    reference: Decimal | None = None  # Tageswert der Referenzperson
+    kind: Literal["target", "limit"] | None = None
+
+
+class RankedArticleOut(Dto):
+    article_id: int
+    name: str
+    amount: Decimal
+    per: str  # "100 g", "100 ml", "100 kcal"
+    share: Decimal | None = None
+    source: Literal["label", "bls"]
+
+
+class UnrankedArticleOut(Dto):
+    article_id: int
+    name: str
+    reason: str
+
+
+class NutrientRankingOut(Dto):
+    nutrient: NutrientDefOut
+    basis: Literal["mass", "kcal"]
+    entries: list[RankedArticleOut]
+    missing: list[UnrankedArticleOut]
+    reference_person: str
+    attribution: str
+
+
+class ArticleMicroOut(Dto):
+    """Ein Wert im Nährstoffprofil des Artikels, je Bezugsgröße (`nutrition_basis`)."""
+
+    code: str
+    amount: Decimal
+    source: Literal["label", "bls"]
+    share: Decimal | None = None
+
+
+class MicroFieldOut(Dto):
+    """Ein Eingabefeld für Etikett-Mikros - die Liste kommt vom Server, nicht doppelt."""
+
+    code: str
+    label: str
+    unit: str
+    group: str
+    kind: Literal["target", "limit"] | None = None  # Tageswert als Ziel oder Obergrenze
+
+
+class BlsFoodOut(Dto):
+    code: str
+    name: str
+    score: float | None = None
+
+
+class ArticleBlsIn(Dto):
+    """Referenz setzen (`code`), bewusst keine (`skip`) oder lösen (beides leer)."""
+
+    code: str | None = None
+    grams_per_unit: Decimal | None = Field(default=None, gt=0, max_digits=10, decimal_places=3)
+    skip: bool = False
 
 
 class ArticleOut(Dto):
@@ -79,6 +216,15 @@ class ArticleOut(Dto):
     fat_g: Decimal | None = None
     protein_g: Decimal | None = None
     nutrition_basis: str = ""
+    # BLS-Referenz für Mikronährstoffe (und Makros, solange oben nichts steht)
+    bls_code: str | None = None
+    bls_name: str | None = None
+    bls_grams_per_unit: Decimal | None = None
+    bls_skip: bool = False
+    # Mikros vom Etikett, je Bezugsgröße und in der Anzeigeeinheit (FOLAC = Folsäure)
+    label_micros: dict[str, Decimal] | None = None
+    # Profil nach "Etikett vor BLS" - für die Artikel-Seite und die wählbare Spalte
+    micros: list[ArticleMicroOut] = Field(default_factory=list)
 
     @classmethod
     def of(cls, article) -> ArticleOut:
@@ -114,7 +260,38 @@ class ArticleOut(Dto):
             fat_g=trim(article.fat_g),
             protein_g=trim(article.protein_g),
             nutrition_basis=BASIS_LABEL.get(unit, ""),
+            bls_code=article.bls_code,
+            bls_name=article.bls_food.name if article.bls_food is not None else None,
+            bls_grams_per_unit=trim(article.bls_grams_per_unit),
+            bls_skip=bool(article.bls_skip),
+            label_micros=(
+                {k: Decimal(str(v)) for k, v in article.label_micros.items()}
+                if article.label_micros
+                else None
+            ),
+            micros=_article_micros(article, unit),
         )
+
+
+def _article_micros(article, unit: Unit) -> list[ArticleMicroOut]:
+    from ...domain.micronutrients import ArticleMicros, article_profile, effective_label
+
+    nutrients = article.bls_food.nutrients if article.bls_food is not None else None
+    if not nutrients and not article.label_micros:
+        return []
+    facts = ArticleMicros(
+        article_id=article.id,
+        unit=unit,
+        per_100g={k: Decimal(str(v)) for k, v in (nutrients or {}).items()},
+        grams_per_unit=article.bls_grams_per_unit,
+        label=effective_label(
+            {k: Decimal(str(v)) for k, v in (article.label_micros or {}).items()}
+        ),
+    )
+    return [
+        ArticleMicroOut(code=v.code, amount=v.amount, source=v.source, share=v.share)
+        for v in article_profile(facts)
+    ]
 
 
 class ArticleIn(Dto):
@@ -135,6 +312,7 @@ class ArticleIn(Dto):
     carbs_g: Decimal | None = Field(default=None, ge=0)
     fat_g: Decimal | None = Field(default=None, ge=0)
     protein_g: Decimal | None = Field(default=None, ge=0)
+    label_micros: dict[str, Decimal] | None = None
 
 
 class ArticlePatch(Dto):
@@ -155,6 +333,7 @@ class ArticlePatch(Dto):
     carbs_g: Decimal | None = Field(default=None, ge=0)
     fat_g: Decimal | None = Field(default=None, ge=0)
     protein_g: Decimal | None = Field(default=None, ge=0)
+    label_micros: dict[str, Decimal] | None = None
 
 
 class ArticleSuggestion(Dto):
@@ -286,6 +465,32 @@ class DishPatch(Dto):
 class NutritionPreviewIn(Dto):
     portions: int = Field(ge=1, le=3)
     ingredients: list[IngredientIn] = Field(default_factory=list)
+
+
+class DishRolesIn(Dto):
+    ingredients: list[IngredientIn] = Field(default_factory=list)
+
+
+class RoleCandidateOut(Dto):
+    article_id: int
+    article_name: str
+    grams: Decimal  # g Kohlenhydrate (Beilage) bzw. g Protein im ganzen Gericht
+    category: str  # gelernt (`known`) oder vorgeschlagen
+    known: bool
+    is_side: bool = False  # liefert schon die Beilage
+
+
+class RoleDetectionOut(Dto):
+    axis: CategoryAxis
+    category: str | None
+    source: RoleCandidateOut | None = None
+    suggestion: RoleCandidateOut | None = None
+    candidates: list[RoleCandidateOut] = Field(default_factory=list)
+
+
+class DishRolesOut(Dto):
+    side: RoleDetectionOut
+    protein: RoleDetectionOut
 
 
 class CookConfirmIn(Dto):

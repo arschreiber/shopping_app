@@ -206,3 +206,47 @@ def test_renaming_onto_a_taken_name_is_refused(client):
     own = client.patch(f"/api/dishes/{soup['id']}", json={"name": " suppe "})
     assert own.status_code == 200, "die eigene Schreibweise ändern geht"
     assert own.json()["name"] == "suppe"
+
+
+def test_roles_are_learned_from_saved_dishes(client):
+    """Beilage und Protein kommen aus den gespeicherten Gerichten, nicht aus einem Feld."""
+    rice = create_article(client, "Reis", carbs_g="80", protein_g="7")
+    tofu = create_article(client, "Räuchertofu", carbs_g="2", protein_g="18")
+    millet = create_article(client, "Hirse", carbs_g="69", protein_g="10")
+    client.post(
+        "/api/dishes",
+        json={
+            "name": "Tofu-Reis",
+            "portions": 2,
+            "ingredients": [
+                {"article_id": rice, "quantity": "250", "unit": "G"},
+                {"article_id": tofu, "quantity": "200", "unit": "G"},
+            ],
+            "categories": [
+                {"axis": "SIDE", "name": "Reis"},
+                {"axis": "PROTEIN", "name": "Tofu"},
+            ],
+        },
+    )
+
+    known = client.post(
+        "/api/dishes/roles",
+        json={"ingredients": [
+            {"article_id": tofu, "quantity": "150", "unit": "G"},
+            {"article_id": rice, "quantity": "200", "unit": "G"},
+        ]},
+    ).json()
+    assert known["side"]["category"] == "Reis"
+    assert known["side"]["source"]["grams"] == "160"
+    assert known["protein"]["category"] == "Tofu"
+
+    new = client.post(
+        "/api/dishes/roles",
+        json={"ingredients": [
+            {"article_id": millet, "quantity": "250", "unit": "G"},
+            {"article_id": tofu, "quantity": "150", "unit": "G"},
+        ]},
+    ).json()
+    assert new["side"]["category"] is None
+    assert new["side"]["suggestion"]["article_name"] == "Hirse"
+    assert new["protein"]["category"] == "Tofu"

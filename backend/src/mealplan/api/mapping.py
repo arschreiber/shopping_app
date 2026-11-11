@@ -7,6 +7,7 @@ from datetime import timedelta
 from ..db import mappers
 from ..db import models as m
 from ..domain.enums import AssignmentKind, Meal, Unit
+from ..domain.micronutrients import MICRONUTRIENTS, REFERENCE_PERSON, DishMicros
 from ..domain.model import (
     Assignment,
     Candidate,
@@ -24,14 +25,21 @@ from .schemas.common import (
     CandidateOut,
     CategoryOut,
     ContributionOut,
+    DayNutritionOut,
+    DishMicrosOut,
     DishNutritionOut,
     DishOut,
     DishSummary,
     IngredientOut,
+    IngredientShareOut,
+    MealNutritionOut,
+    MicroValueOut,
     NutrientsOut,
+    NutritionSumOut,
     ScoreOut,
     SlotOut,
     WarningOut,
+    WeekNutritionOut,
     WeekOut,
 )
 
@@ -145,7 +153,52 @@ def candidate_out(candidate: Candidate, snapshot: PlanningSnapshot) -> Candidate
     )
 
 
-def nutrition_out(nutrition: DishNutrition | None) -> DishNutritionOut | None:
+def micro_values_out(values) -> list[MicroValueOut]:
+    """`MicroValue`s mit Bezeichnung, Einheit und Gruppe - in der festen Reihenfolge."""
+    by_code = {value.code: value for value in values}
+    out = []
+    for nutrient in MICRONUTRIENTS:
+        value = by_code.get(nutrient.code)
+        if value is None:
+            continue
+        out.append(
+            MicroValueOut(
+                code=nutrient.code,
+                label=nutrient.label,
+                unit=nutrient.unit,
+                group=nutrient.group,
+                amount=value.amount,
+                share=value.share,
+                kind=nutrient.kind,
+                partial=value.partial,
+            )
+        )
+    return out
+
+
+def micros_out(micros: DishMicros | None) -> DishMicrosOut | None:
+    if micros is None:
+        return None
+    from ..integrations.nutrients.bls import ATTRIBUTION
+
+    values = micro_values_out(micros.per_portion)
+    return DishMicrosOut(
+        values=values,
+        is_complete=micros.is_complete,
+        has_any=micros.has_any,
+        counted=len(micros.counted_ids),
+        ingredient_count=micros.ingredient_count,
+        missing_article_ids=list(micros.missing_ids),
+        skipped_article_ids=list(micros.skipped_ids),
+        open_quantity_article_ids=list(micros.open_quantity_ids),
+        reference_person=REFERENCE_PERSON,
+        attribution=ATTRIBUTION,
+    )
+
+
+def nutrition_out(
+    nutrition: DishNutrition | None, micros: DishMicros | None = None
+) -> DishNutritionOut | None:
     if nutrition is None:
         return None
     return DishNutritionOut(
@@ -167,7 +220,24 @@ def nutrition_out(nutrition: DishNutrition | None) -> DishNutritionOut | None:
         ingredient_count=nutrition.ingredient_count,
         missing_article_ids=list(nutrition.missing_data_ids),
         open_quantity_article_ids=list(nutrition.open_quantity_ids),
+        micros=micros_out(micros),
+        breakdown=breakdown_out(nutrition, micros) if micros is not None else [],
     )
+
+
+def breakdown_out(nutrition: DishNutrition, micros: DishMicros) -> list[IngredientShareOut]:
+    """Makro- und Mikro-Beiträge je Zutat zusammenführen, in Rezeptreihenfolge."""
+    merged: dict[int, dict] = {}
+    for article_id, part in nutrition.contributions:
+        merged.setdefault(article_id, {}).update(
+            kcal=part.kcal, carbs_g=part.carbs_g, fat_g=part.fat_g, protein_g=part.protein_g
+        )
+    for article_id, values in micros.contributions:
+        merged.setdefault(article_id, {}).update(values)
+    return [
+        IngredientShareOut(article_id=article_id, values=values)
+        for article_id, values in merged.items()
+    ]
 
 
 def category_out(category: m.Category, usage: int = 0) -> CategoryOut:
@@ -196,6 +266,7 @@ def dish_out(
     weeks_since: int | None = None,
     last_cooked=None,
     nutrition: DishNutrition | None = None,
+    micros: DishMicros | None = None,
 ) -> DishOut:
     from ..domain.enums import Effort, SuitableFor
 
@@ -218,7 +289,7 @@ def dish_out(
         ingredients=[ingredient_out(i) for i in dish.ingredients],
         weeks_since_cooked=weeks_since,
         last_cooked=last_cooked,
-        nutrition=nutrition_out(nutrition),
+        nutrition=nutrition_out(nutrition, micros),
     )
 
 
@@ -248,4 +319,47 @@ def dish_summary(
         weeks_since_cooked=weeks_since,
         last_cooked=last_cooked,
         nutrition=nutrition_out(nutrition),
+    )
+
+
+def nutrients_out(n) -> NutrientsOut:
+    return NutrientsOut(kcal=n.kcal, carbs_g=n.carbs_g, fat_g=n.fat_g, protein_g=n.protein_g)
+
+
+def week_nutrition_out(week: m.Week, result, names: dict[int, str]) -> WeekNutritionOut:
+    from ..domain.week_nutrition import MEALS_PER_DAY
+    from ..integrations.nutrients.bls import ATTRIBUTION
+    from ..services.weeks import format_iso
+
+    start = mappers.week_start(week.iso_year, week.iso_week)
+
+    def sum_out(total) -> dict:
+        return dict(
+            nutrients=nutrients_out(total.nutrients),
+            micros=micro_values_out(total.micros),
+            meal_count=total.meal_count,
+            complete=total.complete,
+        )
+
+    return WeekNutritionOut(
+        iso=format_iso(week.iso_year, week.iso_week),
+        meals_per_day=MEALS_PER_DAY,
+        meals=[
+            MealNutritionOut(
+                day=entry.day,
+                meal=entry.meal,
+                dish_id=entry.dish_id,
+                dish_name=names.get(entry.dish_id, ""),
+                per_portion=nutrients_out(entry.nutrients),
+                complete=entry.complete,
+            )
+            for entry in result.meals
+        ],
+        days=[
+            DayNutritionOut(day=day, date=start + timedelta(days=day), **sum_out(total))
+            for day, total in enumerate(result.days)
+        ],
+        average=NutritionSumOut(**sum_out(result.average)),
+        reference_person=REFERENCE_PERSON,
+        attribution=ATTRIBUTION,
     )

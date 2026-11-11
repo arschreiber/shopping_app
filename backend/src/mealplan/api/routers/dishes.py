@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from datetime import date
+from decimal import Decimal
 
 from fastapi import APIRouter, status
 
 from ...db import mappers
 from ...domain.enums import Meal
 from ...services import articles as articles_service
+from ...services import dish_roles as roles_service
 from ...services import dishes as service
 from ...services.ingredient_parsing import (
     parse_lines,
@@ -26,11 +28,15 @@ from ..schemas.common import (
     DishNutritionOut,
     DishOut,
     DishPatch,
+    DishRolesIn,
+    DishRolesOut,
     DishSummary,
     NutritionPreviewIn,
     ParsedLineOut,
     ParseIn,
     ParseOut,
+    RoleCandidateOut,
+    RoleDetectionOut,
 )
 
 router = APIRouter(prefix="/api", tags=["dishes"])
@@ -91,7 +97,11 @@ def create_dish(session: SessionDep, payload: DishIn) -> DishOut:
     )
     session.flush()
     session.refresh(dish)
-    return dish_out(dish, nutrition=service.nutrition_for(session, dish))
+    return dish_out(
+        dish,
+        nutrition=service.nutrition_for(session, dish),
+        micros=service.micros_for(session, dish),
+    )
 
 
 @router.get("/dishes/{dish_id}", response_model=DishOut)
@@ -103,6 +113,7 @@ def get_dish(session: SessionDep, dish_id: int) -> DishOut:
         weeks_since=ages.get(dish_id),
         last_cooked=last.get(dish_id),
         nutrition=service.nutrition_for(session, dish),
+        micros=service.micros_for(session, dish),
     )
 
 
@@ -127,7 +138,11 @@ def update_dish(session: SessionDep, dish_id: int, payload: DishPatch) -> DishOu
     dish = service.update_dish(session, dish_id, **changes)
     session.flush()
     session.refresh(dish)
-    return dish_out(dish, nutrition=service.nutrition_for(session, dish))
+    return dish_out(
+        dish,
+        nutrition=service.nutrition_for(session, dish),
+        micros=service.micros_for(session, dish),
+    )
 
 
 @router.delete("/dishes/{dish_id}", response_model=DishOut)
@@ -152,17 +167,54 @@ def preview_nutrition(session: SessionDep, payload: NutritionPreviewIn) -> DishN
     Die Rechnung liegt in `domain/nutrition.py` - das Frontend soll sie nicht
     nachbauen (ARCHITECTURE.md §7: keine Logik-Duplikate im Frontend).
     """
-    result = service.nutrition_preview(
+    rows = [
+        service.IngredientInput(article_id=row.article_id, quantity=row.quantity, unit=row.unit)
+        for row in payload.ingredients
+    ]
+    result = service.nutrition_preview(session, rows, portions=payload.portions)
+    micros = service.micros_preview(session, rows, portions=payload.portions)
+    return nutrition_out(result, micros)  # type: ignore[return-value]
+
+
+@router.post("/dishes/roles", response_model=DishRolesOut)
+def detect_roles(session: SessionDep, payload: DishRolesIn) -> DishRolesOut:
+    """Beilage und Protein aus den Zutaten (domain/dish_roles.py) - fürs Formular."""
+    from ...domain.dish_roles import Candidate, Detection
+    from ...domain.enums import CategoryAxis
+    from ...domain.model import IngredientSpec
+
+    def candidate(c: Candidate | None) -> RoleCandidateOut | None:
+        if c is None:
+            return None
+        return RoleCandidateOut(
+            article_id=c.article_id,
+            article_name=c.name,
+            grams=c.grams.quantize(Decimal(1)),
+            category=c.category,
+            known=c.known,
+            is_side=c.is_side,
+        )
+
+    def detection(d: Detection) -> RoleDetectionOut:
+        return RoleDetectionOut(
+            axis=d.axis,
+            category=d.category,
+            source=candidate(d.source),
+            suggestion=candidate(d.suggestion),
+            candidates=[candidate(c) for c in d.candidates],  # type: ignore[misc]
+        )
+
+    result = roles_service.detect(
         session,
         [
-            service.IngredientInput(
-                article_id=row.article_id, quantity=row.quantity, unit=row.unit
-            )
+            IngredientSpec(article_id=row.article_id, quantity=row.quantity, unit=row.unit)
             for row in payload.ingredients
         ],
-        portions=payload.portions,
     )
-    return nutrition_out(result)  # type: ignore[return-value]
+    return DishRolesOut(
+        side=detection(result[CategoryAxis.SIDE]),
+        protein=detection(result[CategoryAxis.PROTEIN]),
+    )
 
 
 @router.post("/parse/ingredients", response_model=ParseOut)

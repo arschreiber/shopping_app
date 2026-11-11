@@ -27,12 +27,17 @@ export type IngredientRow = {
 
 const UNIT_OPTIONS: Unit[] = ["G", "ML", "STUECK"];
 
+/** Kleines Etikett hinter einer Zeile - woher Beilage und Protein kommen. */
+export type RowTag = { label: string; tentative?: boolean };
+
 export function IngredientRows({
   rows,
   onChange,
+  tags,
 }: {
   rows: IngredientRow[];
   onChange: (rows: IngredientRow[]) => void;
+  tags?: Record<number, RowTag>;
 }) {
   const [bulkOpen, setBulkOpen] = useState(false);
   const [text, setText] = useState("");
@@ -146,7 +151,7 @@ export function IngredientRows({
                     ),
                   )
                 }
-                className="field w-24 py-1 text-right"
+                className="field w-16 py-1 text-right sm:w-24"
                 aria-label={`Menge ${row.article_name}`}
               />
               {/* Einheit und Entfernen bewusst aus der Tab-Folge: beim Erfassen tippt
@@ -165,7 +170,7 @@ export function IngredientRows({
                     ),
                   )
                 }
-                className="field w-20 py-1"
+                className="field w-[4.25rem] py-1 sm:w-20"
                 aria-label={`Einheit ${row.article_name}`}
               >
                 {UNIT_OPTIONS.map((unit) => (
@@ -174,7 +179,25 @@ export function IngredientRows({
                   </option>
                 ))}
               </select>
-              <span className="flex-1 truncate text-sm">{row.article_name}</span>
+              {/* Auf dem Handy steht das Etikett unter dem Namen - nebeneinander bliebe
+                  vom Namen nichts übrig. */}
+              <span className="flex min-w-0 flex-1 flex-col items-start sm:flex-row
+                               sm:items-center sm:gap-2">
+                <span className="w-full truncate text-sm sm:w-auto sm:flex-1">
+                  {row.article_name}
+                </span>
+                {tags?.[row.article_id] && (
+                  <span
+                    className={[
+                      "shrink-0 rounded-full border border-accent-line px-2 text-2xs",
+                      "leading-4 text-accent",
+                      tags[row.article_id].tentative ? "border-dashed" : "bg-accent-soft",
+                    ].join(" ")}
+                  >
+                    {tags[row.article_id].label}
+                  </span>
+                )}
+              </span>
               <button
                 type="button"
                 tabIndex={-1}

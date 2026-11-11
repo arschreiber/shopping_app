@@ -5,7 +5,7 @@ import { useArchiveDish, useDish, useSaveDish } from "../api/hooks";
 import { IconChevronLeft } from "../components/Icons";
 import { EmptyState, Spinner } from "../components/Primitives";
 import { errorText, useToast } from "../components/Toast";
-import { DishForm, draftFromDish, type DishDraft } from "../features/dishes/DishForm";
+import { DishForm, draftFromDish, toDishIn, type DishDraft } from "../features/dishes/DishForm";
 
 export function DishEditRoute() {
   const params = useParams<{ id: string }>();
@@ -38,78 +38,56 @@ export function DishEditRoute() {
   }
 
   return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-4 p-4 sm:p-6">
+    <div className="mx-auto flex max-w-5xl flex-col gap-3 p-4 sm:p-6">
       <div className="flex items-center gap-2">
         <Link to="/dishes" className="btn-ghost btn-sm">
           <IconChevronLeft />
           Gerichte
         </Link>
+        <h1 className="text-lg font-semibold">Gericht bearbeiten</h1>
         {dish.data?.archived && <span className="chip">archiviert</span>}
       </div>
 
-      <div className="card p-4 sm:p-6">
-        <DishForm
-          draft={draft}
-          onChange={setDraft}
-          saving={save.isPending}
-          submitLabel="Änderungen speichern"
-          onCancel={() => navigate("/dishes")}
-          extraAction={
-            <button
-              type="button"
-              onClick={() =>
-                archive.mutate(id, {
-                  onError: (error) => toast.show(errorText(error), "error"),
-                  onSuccess: () => {
-                    toast.show("Gericht archiviert", "ok");
-                    navigate("/dishes");
-                  },
-                })
-              }
-              className="btn-ghost btn-sm text-danger hover:bg-danger-soft"
-              title="Archivieren - der Verlauf bleibt erhalten"
-            >
-              Archivieren
-            </button>
-          }
-          onSubmit={() =>
-            save.mutate(
-              {
-                id,
-                body: {
-                  name: draft.name,
-                  portions: draft.portions,
-                  packable: draft.packable,
-                  reheatable: draft.reheatable,
-                  allow_double: draft.allow_double,
-                  allow_triple: draft.allow_triple,
-                  effort: draft.effort,
-                  suitable_for: draft.suitable_for,
-                  rating: draft.rating,
-                  prep_text: draft.prep_text || null,
-                  note: draft.note || null,
-                  ingredients: draft.ingredients.map((row) => ({
-                    article_id: row.article_id,
-                    quantity: row.quantity,
-                    unit: row.unit,
-                  })),
-                  categories: draft.categories,
-                },
-              },
-              {
+      <DishForm
+        draft={draft}
+        onChange={setDraft}
+        saving={save.isPending}
+        isNew={false}
+        onCancel={() => navigate("/dishes")}
+        extraAction={
+          <button
+            type="button"
+            onClick={() =>
+              archive.mutate(id, {
                 onError: (error) => toast.show(errorText(error), "error"),
-                // Gespeichert heißt fertig: zurück zur Liste, wie nach Abbrechen und
-                // Archivieren. Ein offenes Formular über gespeicherten Daten sieht aus,
-                // als stünde die Änderung noch aus.
                 onSuccess: () => {
-                  toast.show("Gespeichert", "ok");
+                  toast.show("Gericht archiviert", "ok");
                   navigate("/dishes");
                 },
+              })
+            }
+            className="btn-ghost btn-sm text-danger hover:bg-danger-soft"
+            title="Archivieren - der Verlauf bleibt erhalten"
+          >
+            Archivieren
+          </button>
+        }
+        onSubmit={() =>
+          save.mutate(
+            { id, body: toDishIn(draft) },
+            {
+              onError: (error) => toast.show(errorText(error), "error"),
+              // Gespeichert heißt fertig: zurück zur Liste, wie nach Abbrechen und
+              // Archivieren. Ein offenes Formular über gespeicherten Daten sieht aus,
+              // als stünde die Änderung noch aus.
+              onSuccess: () => {
+                toast.show("Gespeichert", "ok");
+                navigate("/dishes");
               },
-            )
-          }
-        />
-      </div>
+            },
+          )
+        }
+      />
     </div>
   );
 }

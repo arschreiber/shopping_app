@@ -242,6 +242,7 @@ uv run mealplan weights                          # Gewichte zeigen
 uv run mealplan weights --set rotation_cap=15    # kalibrieren, ohne Deploy
 uv run mealplan push --week 2026-W37             # nach Bring! (oder Text-Fallback)
 uv run mealplan catalog-refresh                  # Bring!-Katalog neu cachen
+uv run mealplan nutrients sync                   # BLS einlesen, Referenzen vorschlagen
 uv run mealplan seed-demo                        # Beispieldaten
 ```
 
@@ -314,6 +315,49 @@ das Gericht gilt trotzdem als vollständig gerechnet.
 Die Artikel-Seite zeigt im Kopf, wie weit die Erfassung ist (`30 im Korpus · 30 mit
 Nährwerten`). Es lohnt sich, bei den kalorienstarken Zutaten anzufangen – Reis, Nudeln,
 Kartoffeln, Öl, Käse, Fleisch; das lange Ende der Gemüsesorten bewegt die Summe kaum.
+
+### Vitamine und Mineralstoffe (BLS)
+
+Die Mikronährstoffe kommen aus dem **Bundeslebensmittelschlüssel 4.0** des Max
+Rubner-Instituts (7140 Lebensmittel, frei unter CC BY 4.0, Quelle steht unter jeder
+Tabelle). Jeder Artikel zeigt auf **einen** BLS-Eintrag – „Kichererbsen“ auf
+*Kichererbse reif, Konserve, abgetropft*, weil die Etikett-kcal zur Dose passen. Am
+Gericht klappt unter den Makros „Vitamine & Mineralstoffe“ auf: 23 Werte je Portion,
+mit Balken für den Anteil am Tageswert (DGE-Referenzwerte, Mann 25 bis unter 51 Jahre).
+
+- **Etikett vor Datenbank.** Die Makros oben bleiben die vom Etikett. Nur ein Artikel
+  ganz ohne eigene Makros bekommt sie aus seiner Referenz.
+- **Gramm sind die Brücke.** Der BLS rechnet je 100 g. Bei Stück-Artikeln braucht die
+  Referenz das Stückgewicht, bei ml-Artikeln gilt Dichte 1 – außer man trägt etwas
+  anderes ein (Öl 0,92). Derselbe Faktor taugt für verdünnte Produkte:
+  „Kokosmilch Leicht“ zählt als 0,64 g Kokosmilch je ml (14 g statt 21,9 g Fett).
+- **Etikett vor BLS, auch bei den Mikros.** Im Artikel lassen sich unter „Mikros vom
+  Etikett“ die Werte von der Packung eintragen, je 100 g / 100 ml / Stück. Sie gelten
+  je Nährstoff vor dem BLS; was nicht draufsteht, kommt weiter aus der Referenz. So
+  zählen auch Produkte ohne BLS-Eintrag (Proteinpulver). Folsäure vom Etikett hat ein
+  eigenes Feld und zählt 1,7-fach als Folat-Äquivalent, wie im BLS.
+- **Lücken bleiben sichtbar**, wie bei den Makros: ohne Referenz, bewusst ohne
+  Referenz (Whey, Energy-Drink) und ohne Menge stehen mit Namen unter der Tabelle; ein
+  `*` am Wert heißt, der BLS kennt ihn nicht für jede Zutat.
+
+**Je Artikel nachsehen:** Ein geöffneter Artikel zeigt sein *Nährstoffprofil* je
+Bezugsgröße – mit `E` an den Werten vom Etikett, die übrigen kommen aus dem BLS. In
+der Artikelliste lässt sich oben eine Nährstoff-Spalte wählen („Spalte: Eisen“); die
+Liste sortiert dann absteigend danach.
+
+**Neue Artikel zuordnen** – entweder in der App (Artikel öffnen, Vorschlag anklicken
+oder im BLS suchen) oder alle paar Wochen in einem Lauf:
+
+```bash
+sudo docker compose exec app python -m mealplan.cli.main nutrients sync
+```
+
+`sync` liest den BLS ein (nur wenn die Datei neu ist; sie liegt in
+`data/catalog/bls/`, sonst wird sie geladen), übernimmt Entscheidungen aus
+`data/catalog/bls/links.json` für Artikel, die noch offen sind, und listet den Rest mit
+Vorschlägen. Übernommen wird von den Vorschlägen nichts – die Wahl zwischen roh,
+Konserve und gekocht ist eine fachliche. Weitere Befehle: `nutrients search`, `link`,
+`skip`, `unlink`, `export`, `apply`, `dish "<Gericht>"`.
 
 > Der Planer benutzt die Werte **nicht**. Wenn er das später soll, kostet es ein
 > weiteres Gewicht in `setting` – genauso wie der Angebots-Bonus. `general_plan.md`

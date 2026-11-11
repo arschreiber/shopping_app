@@ -3,11 +3,22 @@
  * Einheit, der Bring!-Katalogname (nur damit gibt es Icon und Kategorie) und die
  * Flags Grundvorrat / Watchlist.
  */
-import { useState } from "react";
-import type { Article, Unit } from "../api/client";
-import { suggestCatalog, useArticles, useMergeArticles, useSaveArticle } from "../api/hooks";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import type { Article, ArticleMicro, Unit } from "../api/client";
+import {
+  suggestCatalog,
+  useArticles,
+  useMergeArticles,
+  useMicroFields,
+  useSaveArticle,
+} from "../api/hooks";
 import { IconCheck, IconPlus } from "../components/Icons";
 import { EmptyState, Segmented, Spinner, Toggle } from "../components/Primitives";
+import { BlsReference } from "../features/articles/BlsReference";
+import { LabelMicros, labelMicrosBody } from "../features/articles/LabelMicros";
+import { MicroProfile } from "../features/articles/MicroProfile";
+import { ArticleTabs } from "../features/articles/ArticleTabs";
 import { errorText, useToast } from "../components/Toast";
 import { PRICE_UNIT, UNIT_LABEL, formatNumber, formatUnitPrice } from "../lib/format";
 
@@ -31,7 +42,11 @@ const NUTRITION_FIELDS: [string, string, string][] = [
 
 export function ArticlesRoute() {
   const [query, setQuery] = useState("");
-  const [editing, setEditing] = useState<number | null>(null);
+  // `?edit=ID` öffnet einen Artikel direkt - z. B. aus der Nährwert-Rangliste.
+  const [params] = useSearchParams();
+  const [editing, setEditing] = useState<number | null>(
+    () => Number(params.get("edit")) || null,
+  );
   const [creating, setCreating] = useState(false);
   // Aufräum-Modus: mehrere versehentlich doppelt angelegte Zutaten auswählen und auf
   // eine zusammenführen. Bewusst von Hand ausgelöst - ob "Süßkartoffeln" dasselbe wie
@@ -40,9 +55,32 @@ export function ArticlesRoute() {
   const articles = useArticles(query || undefined);
   const merge = useMergeArticles();
   const mergeToast = useToast();
+  // Eine wählbare Nährstoff-Spalte statt 23: "Was bringt am meisten Eisen?" Gewählt,
+  // sortiert die Liste absteigend danach - je Bezugsgröße des Artikels.
+  const microFields = useMicroFields();
+  const [column, setColumn] = useState("");
+  const columnField = microFields.data?.find((field) => field.code === column);
+  const microOf = (article: Article) =>
+    article.micros?.find((value) => value.code === column) ?? null;
+  const rows =
+    column && articles.data
+      ? [...articles.data].sort(
+          (a, b) => Number(microOf(b)?.amount ?? -1) - Number(microOf(a)?.amount ?? -1),
+        )
+      : articles.data;
+
+  // Der geöffnete Artikel kann weit unten stehen - einmal hinscrollen, wenn er da ist.
+  const loaded = Boolean(articles.data);
+  useEffect(() => {
+    const id = Number(params.get("edit"));
+    if (!id || !loaded) return;
+    document.getElementById(`article-${id}`)?.scrollIntoView({ block: "center" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loaded]);
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-4 p-4 sm:p-6">
+      <ArticleTabs />
       <header className="flex flex-wrap items-center gap-3">
         <div>
           <h1 className="text-xl font-semibold">Artikel</h1>
@@ -50,11 +88,29 @@ export function ArticlesRoute() {
             {articles.data
               ? `${articles.data.length} im Korpus · ${
                   articles.data.filter((entry) => entry.kcal !== null).length
-                } mit Nährwerten`
+                } mit Nährwerten · ${
+                  articles.data.filter((entry) => entry.bls_code).length
+                } mit BLS-Referenz`
               : "…"}
           </p>
         </div>
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <select
+            value={column}
+            onChange={(event) => setColumn(event.target.value)}
+            className="field w-40"
+            aria-label="Nährstoff-Spalte wählen"
+            title="Zeigt einen Nährstoff je 100 g / 100 ml / Stück und sortiert danach"
+          >
+            <option value="">Spalte: kcal</option>
+            {(microFields.data ?? [])
+              .filter((field) => field.code !== "FOLAC")
+              .map((field) => (
+                <option key={field.code} value={field.code}>
+                  Spalte: {field.label}
+                </option>
+              ))}
+          </select>
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
@@ -117,12 +173,12 @@ export function ArticlesRoute() {
         />
       )}
 
-      {articles.data && articles.data.length > 0 && (
+      {rows && rows.length > 0 && (
         <div className="card overflow-hidden">
           <ul className="divide-y divide-line">
-            {articles.data.map((article) =>
+            {rows.map((article) =>
               editing === article.id ? (
-                <li key={article.id} className="bg-sunken/40 p-3">
+                <li key={article.id} id={`article-${article.id}`} className="bg-sunken/40 p-3">
                   <ArticleEditor article={article} onDone={() => setEditing(null)} />
                 </li>
               ) : (
@@ -159,17 +215,25 @@ export function ArticlesRoute() {
                   <span className="w-12 shrink-0 text-right text-xs text-ink-muted">
                     {UNIT_LABEL[article.unit]}
                   </span>
-                  <span
-                    className="hidden w-24 shrink-0 text-right text-xs tabular-nums
-                               text-ink-faint sm:block"
-                    title={
-                      article.kcal === null
-                        ? "keine Nährwerte erfasst"
-                        : `${article.kcal} kcal ${BASIS_LABEL[article.unit]}`
-                    }
-                  >
-                    {article.kcal === null ? "– kcal" : `${formatNumber(article.kcal)} kcal`}
-                  </span>
+                  {columnField ? (
+                    <MicroCell
+                      value={microOf(article)}
+                      unit={columnField.unit}
+                      basis={BASIS_LABEL[article.unit]}
+                    />
+                  ) : (
+                    <span
+                      className="hidden w-24 shrink-0 text-right text-xs tabular-nums
+                                 text-ink-faint sm:block"
+                      title={
+                        article.kcal === null
+                          ? "keine Nährwerte erfasst"
+                          : `${article.kcal} kcal ${BASIS_LABEL[article.unit]}`
+                      }
+                    >
+                      {article.kcal === null ? "– kcal" : `${formatNumber(article.kcal)} kcal`}
+                    </span>
+                  )}
                   <span className="hidden w-36 shrink-0 truncate text-xs text-ink-faint sm:block">
                     {article.bring_catalog_name ?? "– kein Bring!-Name"}
                   </span>
@@ -192,6 +256,39 @@ export function ArticlesRoute() {
         </div>
       )}
     </div>
+  );
+}
+
+function MicroCell({
+  value,
+  unit,
+  basis,
+}: {
+  value: ArticleMicro | null;
+  unit: string;
+  basis: string;
+}) {
+  return (
+    <span
+      className="w-28 shrink-0 text-right text-xs tabular-nums text-ink-muted"
+      title={
+        value
+          ? `${basis}, ${value.source === "label" ? "vom Etikett" : "aus dem BLS"}`
+          : "unbekannt"
+      }
+    >
+      {value ? (
+        <>
+          {formatNumber(value.amount)}
+          <span className="text-2xs text-ink-faint"> {unit}</span>
+          {value.share !== null && value.share !== undefined && (
+            <span className="ml-1 text-2xs text-ink-faint">{value.share} %</span>
+          )}
+        </>
+      ) : (
+        <span className="text-ink-faint">–</span>
+      )}
+    </span>
   );
 }
 
@@ -260,15 +357,37 @@ function ArticleEditor({
     protein_g: article?.protein_g ?? "",
   });
 
-  async function loadSuggestions() {
-    if (!name.trim()) return;
-    try {
-      const hits = await suggestCatalog(name);
-      setSuggestions(hits.map((hit) => hit.name));
-    } catch {
+  const [labelMicros, setLabelMicros] = useState<Record<string, string>>(
+    Object.fromEntries(
+      Object.entries(article?.label_micros ?? {}).map(([code, value]) => [code, String(value)]),
+    ),
+  );
+
+  // Bring!-Vorschläge gleich beim Öffnen laden (und beim Tippen nachziehen) - früher
+  // kamen sie erst beim Verlassen des Namensfelds und schoben dann das Formular.
+  useEffect(() => {
+    const query = name.trim();
+    if (!query) {
       setSuggestions([]);
+      return;
     }
-  }
+    let cancelled = false;
+    const timer = window.setTimeout(
+      async () => {
+        try {
+          const hits = await suggestCatalog(query);
+          if (!cancelled) setSuggestions(hits.map((hit) => hit.name));
+        } catch {
+          if (!cancelled) setSuggestions([]);
+        }
+      },
+      article && query === article.canonical_name ? 0 : 300,
+    );
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [name, article]);
 
   return (
     <form
@@ -295,6 +414,7 @@ function ArticleEditor({
               regular_pack_price: decimalOrNull(regularPrice),
               regular_pack_unit: weighed && regularInPieces ? "STUECK" : null,
               piece_size: weighed ? decimalOrNull(pieceSize) : null,
+              label_micros: labelMicrosBody(labelMicros),
               // Leeres Feld heißt "nicht erfasst", eine 0 heißt "enthält nichts davon".
               ...Object.fromEntries(
                 Object.entries(nutrition).map(([field, value]) => [
@@ -315,13 +435,12 @@ function ArticleEditor({
       }}
       className="flex flex-col gap-3"
     >
-      <div className="flex flex-wrap items-end gap-3">
+      <div className="flex flex-wrap items-start gap-3">
         <div className="min-w-48 flex-1">
           <label className="label mb-1 block">Name</label>
           <input
             value={name}
             onChange={(event) => setName(event.target.value)}
-            onBlur={loadSuggestions}
             className="field"
             required
             autoFocus
@@ -535,6 +654,14 @@ function ArticleEditor({
           ))}
         </div>
       </fieldset>
+
+      {article && (
+        <BlsReference article={article}>
+          <MicroProfile article={article} basis={BASIS_LABEL[unit]} />
+        </BlsReference>
+      )}
+
+      <LabelMicros values={labelMicros} onChange={setLabelMicros} basis={BASIS_LABEL[unit]} />
 
       <div className="flex flex-wrap items-center gap-5">
         <Toggle checked={staple} onChange={setStaple} label="Grundvorrat" />

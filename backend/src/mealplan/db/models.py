@@ -109,8 +109,27 @@ class Article(Base, TimestampMixin):
     fat_g: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
     protein_g: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
 
+    # Referenz im Bundeslebensmittelschlüssel (domain/micronutrients.py): liefert die
+    # Mikronährstoffe und die Makros, solange oben nichts vom Etikett steht.
+    # `bls_grams_per_unit`: Gramm je Artikel-Einheit - Gramm pro Stück bei STUECK, Dichte
+    # bei ML (Öl ≈ 0,92). NULL = 1. `bls_skip`: bewusst ohne Referenz (Whey, Energy-Drink),
+    # damit der Artikel nicht bei jedem Lauf wieder als offen auftaucht.
+    bls_code: Mapped[str | None] = mapped_column(String(10))
+    bls_grams_per_unit: Mapped[Decimal | None] = mapped_column(Numeric(10, 3))
+    bls_skip: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("0"))
+    # Mikros vom Etikett: `{Code: Wert}` je 100 g / 100 ml / Stück in der Anzeigeeinheit
+    # (domain/micronutrients.py). Gelten je Nährstoff vor dem BLS; NULL = nichts erfasst.
+    label_micros: Mapped[dict[str, str] | None] = mapped_column(JSON)
+
     aliases: Mapped[list[ArticleAlias]] = relationship(
         back_populates="article", cascade="all, delete-orphan", lazy="selectin"
+    )
+    # Ohne Fremdschlüssel: der Import ersetzt `bls_food` komplett, ein verschwundener
+    # Code darf den Artikel nicht mitreißen - er zählt dann einfach als offen.
+    bls_food: Mapped[BlsFood | None] = relationship(
+        primaryjoin="foreign(Article.bls_code) == BlsFood.code",
+        viewonly=True,
+        lazy="selectin",
     )
     __table_args__ = (
         CheckConstraint("unit in ('STUECK','G','ML')", name="ck_article_canonical_unit"),
@@ -407,6 +426,19 @@ class Setting(Base):
 
     key: Mapped[str] = mapped_column(String(60), primary_key=True)
     value: Mapped[dict[str, Any]] = mapped_column(JSON)
+
+
+class BlsFood(Base):
+    """Ein Lebensmittel aus dem Bundeslebensmittelschlüssel 4.0 (Max Rubner-Institut,
+    CC BY 4.0). Nur die Nährstoffe, die die App zeigt - je 100 g, fehlende Werte fehlen
+    im JSON (unbekannt ist nicht null). Wird von `mealplan nutrients sync` ersetzt."""
+
+    __tablename__ = "bls_food"
+
+    code: Mapped[str] = mapped_column(String(10), primary_key=True)
+    name: Mapped[str] = mapped_column(String(300))
+    name_en: Mapped[str | None] = mapped_column(String(300))
+    nutrients: Mapped[dict[str, float]] = mapped_column(JSON)
 
 
 # ------------------------------------------------------------------- Phase 2: Angebote

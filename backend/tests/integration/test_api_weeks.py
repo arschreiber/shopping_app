@@ -362,3 +362,43 @@ def test_slots_arrive_in_the_order_people_read_them(client):
     order = [(slot["day"], slot["meal"]) for slot in week["slots"]]
     expected = [(day, meal) for day in range(7) for meal in ("LUNCH", "DINNER")]
     assert order == expected
+
+
+def test_week_nutrition_per_day_and_average(client):
+    """Tag = Mittag + Abend für eine Person; Ø zählt jede Mahlzeit einmal."""
+
+    def article(name, kcal, protein):
+        response = client.post(
+            "/api/articles",
+            json={"canonical_name": name, "unit": "G", "kcal": kcal, "protein_g": protein,
+                  "carbs_g": "0", "fat_g": "0"},
+        )
+        return response.json()["id"]
+
+    def dish(name, article_id, grams):
+        response = client.post(
+            "/api/dishes",
+            json={"name": name, "portions": 2,
+                  "ingredients": [{"article_id": article_id, "quantity": grams, "unit": "G"}]},
+        )
+        return response.json()["id"]
+
+    tofu = dish("Tofu-Pfanne", article("Tofu", "100", "20"), "1000")  # 500 kcal je Portion
+    lentils = dish("Linsen-Dal", article("Linsen", "300", "24"), "600")  # 900 kcal je Portion
+    client.get(f"/api/weeks/{ISO}")
+    for day, meal_, dish_id in ((1, "LUNCH", tofu), (1, "DINNER", lentils), (2, "LUNCH", tofu)):
+        response = client.put(
+            f"/api/weeks/{ISO}/slots/{day}/{meal_}/assignment",
+            json={"kind": "DISH", "dish_id": dish_id},
+        )
+        assert response.status_code == 200, response.text
+
+    data = client.get(f"/api/weeks/{ISO}/nutrition").json()
+    assert data["meals_per_day"] == 2
+    assert [m["dish_name"] for m in data["meals"]] == ["Tofu-Pfanne", "Linsen-Dal", "Tofu-Pfanne"]
+    tuesday = data["days"][1]
+    assert tuesday["meal_count"] == 2
+    assert tuesday["nutrients"]["kcal"] == "1400"
+    assert data["days"][2]["meal_count"] == 1
+    assert data["average"]["meal_count"] == 3
+    assert data["average"]["nutrients"]["kcal"] == "633"

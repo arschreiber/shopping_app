@@ -6,7 +6,7 @@
  * Unten rechts die Zeit (TimeMark): Uhr bei wenig Zeit, Reste-Schale bei keiner.
  */
 import { useDraggable, useDroppable } from "@dnd-kit/core";
-import type { Slot, Warning } from "../../api/client";
+import type { MealNutrition, Slot, Warning } from "../../api/client";
 import {
   IconClose,
   IconDice,
@@ -15,6 +15,7 @@ import {
   IconPlus,
 } from "../../components/Icons";
 import { TimeMark } from "./TimeMark";
+import { MacroLine } from "./WeekNutrition";
 
 export function SlotCard({
   slot,
@@ -25,6 +26,7 @@ export function SlotCard({
   onReroll,
   onClear,
   dragEnabled,
+  nutrition,
 }: {
   slot: Slot;
   iso: string;
@@ -35,6 +37,8 @@ export function SlotCard({
   onReroll: () => void;
   onClear: () => void;
   dragEnabled: boolean;
+  /** Ansicht "Nährwerte": Werte einer Portion; `null` = Gericht ohne Angaben. */
+  nutrition?: MealNutrition | null;
 }) {
   const id = `${slot.day}-${slot.meal}`;
   const assignment = slot.assignment;
@@ -160,6 +164,15 @@ export function SlotCard({
                 </span>
               )}
             </span>
+            {nutrition !== undefined && !cancelled && (
+              <span className="text-2xs text-ink-muted">
+                {nutrition ? (
+                  <MacroLine nutrients={nutrition.per_portion} complete={nutrition.complete} />
+                ) : (
+                  "keine Nährwerte"
+                )}
+              </span>
+            )}
           </>
         )}
       </button>

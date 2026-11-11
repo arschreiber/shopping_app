@@ -23,6 +23,7 @@ from ..domain.enums import (
     TimeBudget,
     Unit,
 )
+from ..domain.micronutrients import ArticleMicros, macros_from_bls
 from ..domain.model import (
     Assignment,
     Category,
@@ -166,7 +167,11 @@ def ingredients_by_dish(session: Session) -> dict[int, list[IngredientSpec]]:
 
 
 def article_nutrition_index(session: Session) -> dict[int, ArticleNutrition]:
-    """`{article_id: ArticleNutrition}` - Artikel ohne jede Angabe fehlen hier."""
+    """`{article_id: ArticleNutrition}` - Artikel ohne jede Angabe fehlen hier.
+
+    Etikett vor Datenbank: nur wer gar keine eigenen Makros hat, bekommt die aus seiner
+    BLS-Referenz (domain/micronutrients.py `macros_from_bls`).
+    """
     rows = session.execute(
         select(
             m.Article.id,
@@ -175,13 +180,26 @@ def article_nutrition_index(session: Session) -> dict[int, ArticleNutrition]:
             m.Article.carbs_g,
             m.Article.fat_g,
             m.Article.protein_g,
-        )
+            m.Article.bls_grams_per_unit,
+            m.BlsFood.nutrients,
+        ).outerjoin(m.BlsFood, m.BlsFood.code == m.Article.bls_code)
     ).all()
     out: dict[int, ArticleNutrition] = {}
-    for article_id, unit, kcal, carbs, fat, protein in rows:
+    for article_id, unit, kcal, carbs, fat, protein, grams, bls_values in rows:
         facts = article_nutrition(
             article_id, Unit(unit), kcal=kcal, carbs_g=carbs, fat_g=fat, protein_g=protein
         )
+        if facts is None and bls_values:
+            per_basis = macros_from_bls(
+                ArticleMicros(
+                    article_id=article_id,
+                    unit=Unit(unit),
+                    per_100g={k: Decimal(str(v)) for k, v in bls_values.items()},
+                    grams_per_unit=grams,
+                )
+            )
+            if per_basis is not None:
+                facts = ArticleNutrition(article_id, Unit(unit), per_basis)
         if facts is not None:
             out[article_id] = facts
     return out

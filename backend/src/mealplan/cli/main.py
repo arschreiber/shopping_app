@@ -7,6 +7,7 @@
     mealplan list --week 2026-W37          # Einkaufsliste als Text
     mealplan seed-demo                     # Beispieldaten zum Ausprobieren
     mealplan catalog-refresh               # Bring!-Katalog cachen
+    mealplan nutrients sync                # BLS einlesen, Referenzen vorschlagen
 """
 
 from __future__ import annotations
@@ -23,6 +24,15 @@ from ..services import planning, settings_store, shopping_list
 from ..services.weeks import format_iso, get_or_create_week
 
 app = typer.Typer(help="Wochenplan & Einkauf - Kommandozeile", no_args_is_help=True)
+
+
+def _register_subcommands() -> None:
+    from .nutrients import app as nutrients_app
+
+    app.add_typer(nutrients_app, name="nutrients")
+
+
+_register_subcommands()
 
 
 def _current_iso() -> str:

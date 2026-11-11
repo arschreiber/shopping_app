@@ -1,71 +1,19 @@
 /**
- * Gerichte-Liste mit Schnellerfassung. Phase 0 heißt: 30-50 Gerichte an einem Abend
- * eintippen (general_plan.md §5). Darum bleibt das Formular oben offen und der Fokus
- * springt nach dem Speichern zurück in den Namen.
+ * Gerichte-Liste. Angelegt wird auf einer eigenen Seite (`DishNewRoute`) - dasselbe
+ * Formular wie beim Bearbeiten, mit "Speichern & nächstes" für mehrere am Stück.
  */
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import type { DishSummary } from "../api/client";
-import { useDishes, useSaveDish } from "../api/hooks";
+import { useDishes } from "../api/hooks";
 import { IconBook, IconPlus } from "../components/Icons";
 import { EmptyState, Spinner } from "../components/Primitives";
-import { errorText, useToast } from "../components/Toast";
-import {
-  DishForm,
-  emptyDraft,
-  type DishDraft,
-} from "../features/dishes/DishForm";
 import { NutritionCell } from "../features/dishes/NutritionPanel";
 import { AXIS_LABEL, EFFORT_LABEL, FACTOR_WORD, stars } from "../lib/format";
 
 export function DishesRoute() {
   const [query, setQuery] = useState("");
-  const [adding, setAdding] = useState(false);
-  const [draft, setDraft] = useState<DishDraft>(emptyDraft);
-  // Zählt jedes gespeicherte Gericht hoch und montiert damit das Formular neu. Ein
-  // zurückgesetzter Entwurf allein reicht nicht: Textblock, Kategorie-Eingaben und der
-  // Fokus liegen im Formular selbst und überlebten das Speichern sonst.
-  const [formKey, setFormKey] = useState(0);
   const dishes = useDishes(query || undefined);
-  const save = useSaveDish();
-  const toast = useToast();
-
-  function submit() {
-    save.mutate(
-      {
-        body: {
-          name: draft.name,
-          portions: draft.portions,
-          packable: draft.packable,
-          reheatable: draft.reheatable,
-          allow_double: draft.allow_double,
-          allow_triple: draft.allow_triple,
-          effort: draft.effort,
-          suitable_for: draft.suitable_for,
-          rating: draft.rating,
-          prep_text: draft.prep_text || null,
-          note: draft.note || null,
-          ingredients: draft.ingredients.map((row) => ({
-            article_id: row.article_id,
-            quantity: row.quantity,
-            unit: row.unit,
-          })),
-          categories: draft.categories,
-        },
-      },
-      {
-        onError: (error) => toast.show(errorText(error), "error"),
-        onSuccess: (dish) => {
-          toast.show(`„${dish.name}“ gespeichert`, "ok");
-          // "Speichern & nächstes" heißt: leeres Formular. Vorher blieben Aufwand,
-          // Portionen und die Schalter stehen - gedacht als Tipphilfe für ähnliche
-          // Gerichte, gelesen aber als "das Formular hat mich nicht verstanden".
-          setDraft(emptyDraft());
-          setFormKey((current) => current + 1);
-        },
-      },
-    );
-  }
 
   return (
     <div className="flex flex-col gap-4 p-4 sm:p-6">
@@ -84,44 +32,26 @@ export function DishesRoute() {
             className="field w-40 sm:w-56"
             aria-label="Gerichte suchen"
           />
-          <button
-            type="button"
-            onClick={() => setAdding(!adding)}
-            className={adding ? "btn-secondary btn-sm" : "btn-primary btn-sm"}
-          >
+          <Link to="/dishes/new" className="btn-primary btn-sm">
             <IconPlus className="h-3.5 w-3.5" />
-            {adding ? "schließen" : "Gericht"}
-          </button>
+            Gericht
+          </Link>
         </div>
       </header>
 
-      {adding && (
-        <div className="card p-4 sm:p-6">
-          <DishForm
-            key={formKey}
-            draft={draft}
-            onChange={setDraft}
-            onSubmit={submit}
-            onCancel={() => setAdding(false)}
-            saving={save.isPending}
-            submitLabel="Speichern & nächstes"
-          />
-        </div>
-      )}
-
       {dishes.isLoading && <Spinner label="Gerichte werden geladen …" />}
 
-      {dishes.data?.length === 0 && !adding && (
+      {dishes.data?.length === 0 && !query && (
         <EmptyState
           title="Noch keine Gerichte"
           hint="Die Planung braucht Vorrat: 30-50 Gerichte sind der Punkt, an dem die
                 Vorschläge wirklich Auswahl haben. Zutaten kannst du als Textblock
                 einfügen – eine Zeile pro Zutat."
           action={
-            <button type="button" onClick={() => setAdding(true)} className="btn-primary btn-sm">
+            <Link to="/dishes/new" className="btn-primary btn-sm">
               <IconPlus className="h-3.5 w-3.5" />
               Erstes Gericht
-            </button>
+            </Link>
           }
         />
       )}

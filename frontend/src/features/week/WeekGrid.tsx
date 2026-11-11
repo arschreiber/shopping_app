@@ -16,6 +16,8 @@ export function WeekGrid({
   iso,
   renderCell,
   dayAction,
+  dayFooter,
+  footerLabel = "",
   wide = "columns",
 }: {
   /** Mit Woche: Datum und "heute" an den Tagen. Ohne (Standardwoche): nur Wochentage. */
@@ -29,6 +31,10 @@ export function WeekGrid({
   renderCell: (day: number, meal: Meal, wide: boolean) => ReactNode;
   /** Etwas für den ganzen Tag, rechts neben dem Tagesnamen. */
   dayAction?: (day: number) => ReactNode;
+  /** Eine Zeile unter den Mahlzeiten eines Tages (z. B. Nährwert-Summe). */
+  dayFooter?: (day: number) => ReactNode;
+  /** Beschriftung der Fußzeile links im Laptop-Raster. */
+  footerLabel?: string;
 }) {
   const today = (day: number) => (iso ? isToday(iso, day) : false);
 
@@ -98,6 +104,19 @@ export function WeekGrid({
                 ))}
               </div>
             ))}
+            {dayFooter && (
+              <div className="col-span-8 grid grid-cols-subgrid gap-x-2 border-t border-line
+                              pt-2">
+                <div className="flex items-center justify-end pr-1">
+                  <span className="label">{footerLabel}</span>
+                </div>
+                {DAY_SHORT.map((_, day) => (
+                  <div key={day} className="min-w-0">
+                    {dayFooter(day)}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -134,6 +153,7 @@ export function WeekGrid({
                 </div>
               ))}
             </div>
+            {dayFooter && <div className="mt-2">{dayFooter(day)}</div>}
           </section>
         ))}
       </div>

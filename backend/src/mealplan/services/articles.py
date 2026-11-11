@@ -18,6 +18,7 @@ NUTRITION_FIELDS = ("kcal", "carbs_g", "fat_g", "protein_g")
 # Felder, bei denen `None` eine Aussage ist und darum durchkommen muss
 CLEARABLE_FIELDS = (
     *NUTRITION_FIELDS,
+    "label_micros",  # None: keine Etikett-Mikros (mehr)
     "bring_catalog_name",  # leer: auf Bring! unter dem Artikelnamen
     "max_unit_price",
     "min_offer_amount",
@@ -62,6 +63,7 @@ def create_article(
     regular_pack_price: Decimal | None = None,
     regular_pack_unit: str | None = None,
     piece_size: Decimal | None = None,
+    label_micros: dict[str, Decimal] | None = None,
     **nutrition,
 ) -> m.Article:
     name = canonical_name.strip()
@@ -91,6 +93,7 @@ def create_article(
         regular_pack_price=regular_pack_price,
         regular_pack_unit=regular_pack_unit,
         piece_size=piece_size,
+        label_micros=_clean_label(label_micros),
         **{
             field: value
             for field, value in nutrition.items()
@@ -120,6 +123,8 @@ def update_article(session: Session, article_id: int, **changes) -> m.Article:
             changes.pop("piece_size", None)
             changes.pop("regular_pack_unit", None)
     aliases = changes.pop("aliases", None)
+    if "label_micros" in changes:
+        changes["label_micros"] = _clean_label(changes["label_micros"])
     for field, value in changes.items():
         if not hasattr(article, field):
             continue
@@ -135,6 +140,12 @@ def update_article(session: Session, article_id: int, **changes) -> m.Article:
         for alias in aliases:
             add_alias(session, article, alias)
     return article
+
+
+def _clean_label(values):
+    from .nutrients import clean_label
+
+    return clean_label(values)
 
 
 def _check_regular_price(article: m.Article) -> None:

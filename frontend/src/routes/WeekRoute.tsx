@@ -17,14 +17,16 @@ import {
   useSaveGrid,
   useSetCancelled,
   useWeek,
+  useWeekNutrition,
 } from "../api/hooks";
 import { IconChevronLeft, IconChevronRight, IconDice } from "../components/Icons";
-import { EmptyState, Spinner } from "../components/Primitives";
+import { EmptyState, Segmented, Spinner } from "../components/Primitives";
 import { errorText, useToast } from "../components/Toast";
 import { WarningList } from "../components/Warnings";
 import { Board } from "../features/week/Board";
 import { CandidateSheet } from "../features/week/CandidateSheet";
 import { toSlotInputs } from "../features/week/SlotSettings";
+import { NutritionDetail, scaleSum } from "../features/week/WeekNutrition";
 import { currentIsoWeek, formatRange, parseIso, shiftIsoWeek } from "../lib/dates";
 
 export function WeekRoute() {
@@ -38,6 +40,27 @@ export function WeekRoute() {
   // Laptop/Handy.
   const [gridDraft, setGridDraft] = useState<SlotIn[] | null>(null);
   const editing = gridDraft !== null;
+
+  // Ansicht "Gerichte" oder "Nährwerte" - je Gerät gemerkt.
+  const [view, setView] = useState<BoardView>(readView);
+  const [nutritionDay, setNutritionDay] = useState<number | null>(null);
+  // Ø je Portion (1×) oder hochgerechnet auf einen Tag mit Mittag + Abend (2×).
+  const [averageFactor, setAverageFactor] = useState<"1" | "2">("1");
+  const showNutrition = view === "nutrition" && !editing;
+  const nutrition = useWeekNutrition(iso, showNutrition);
+  useEffect(() => setNutritionDay(null), [iso]);
+  // Am Handy steht das Detail weit unter dem angetippten Tag - dorthin scrollen.
+  useEffect(() => {
+    if (nutritionDay === null) return;
+    const timer = window.setTimeout(
+      () =>
+        document
+          .getElementById("day-nutrition")
+          ?.scrollIntoView({ behavior: "smooth", block: "nearest" }),
+      50,
+    );
+    return () => window.clearTimeout(timer);
+  }, [nutritionDay]);
   const [selected, setSelected] = useState<{ day: number; meal: Meal } | null>(null);
 
   const week = useWeek(iso);
@@ -217,6 +240,22 @@ export function WeekRoute() {
           {data.planned_count} von {data.needed_count} Slots
         </span>
 
+        {!editing && (
+          <Segmented
+            label="Ansicht"
+            size="sm"
+            value={view}
+            options={[
+              { value: "dishes", label: "Gerichte" },
+              { value: "nutrition", label: "Nährwerte", title: "je Portion und je Tag" },
+            ]}
+            onChange={(next) => {
+              setView(next);
+              writeView(next);
+            }}
+          />
+        )}
+
         <div className="ml-auto flex flex-wrap items-center gap-2">
           {!editing && (
             <button
@@ -325,6 +364,9 @@ export function WeekRoute() {
           clearSlot.mutate({ day: slot.day, meal: slot.meal }, { onError: fail })
         }
         onSwap={swap}
+        nutrition={showNutrition ? (nutrition.data ?? null) : undefined}
+        selectedDay={nutritionDay}
+        onSelectDay={(day) => setNutritionDay((current) => (current === day ? null : day))}
         editing={
           gridDraft
             ? {
@@ -341,6 +383,61 @@ export function WeekRoute() {
             : undefined
         }
       />
+
+      {showNutrition && nutrition.isLoading && <Spinner label="Nährwerte werden berechnet …" />}
+
+      {showNutrition && nutrition.data && nutritionDay !== null && (
+        <NutritionDetail
+          id="day-nutrition"
+          title={`${DAY_NAME[nutritionDay]} · je Person`}
+          subtitle={
+            nutrition.data.days[nutritionDay].meal_count < nutrition.data.meals_per_day
+              ? `nur ${nutrition.data.days[nutritionDay].meal_count} von ${nutrition.data.meals_per_day} Mahlzeiten erfasst`
+              : "Mittag + Abend"
+          }
+          sum={nutrition.data.days[nutritionDay]}
+          footnote={`Balken: Anteil am Tageswert (${nutrition.data.reference_person}) – ohne Frühstück und Snacks. Quelle: ${nutrition.data.attribution}`}
+          onClose={() => setNutritionDay(null)}
+        />
+      )}
+
+      {showNutrition && nutrition.data && (
+        nutrition.data.average.meal_count > 0 ? (
+          <NutritionDetail
+            title={
+              averageFactor === "2"
+                ? "Ø je Tag diese Woche (2 Portionen)"
+                : "Ø je Portion diese Woche"
+            }
+            subtitle={`aus ${nutrition.data.average.meal_count} ${
+              nutrition.data.average.meal_count === 1 ? "Mahlzeit" : "Mahlzeiten"
+            } · jede Mahlzeit zählt einmal`}
+            sum={scaleSum(nutrition.data.average, Number(averageFactor))}
+            action={
+              <Segmented
+                label="Hochrechnen"
+                size="sm"
+                value={averageFactor}
+                options={[
+                  { value: "1", label: "1×", title: "eine Portion" },
+                  { value: "2", label: "2×", title: "ein Tag: Mittag + Abend" },
+                ]}
+                onChange={setAverageFactor}
+              />
+            }
+            footnote={
+              averageFactor === "2"
+                ? `Zwei Ø-Portionen, also ein Tag mit Mittag und Abend. Balken: Anteil am Tageswert einer Person (${nutrition.data.reference_person}) – ohne Frühstück und Snacks.`
+                : `Balken: Anteil am Tageswert einer Person (${nutrition.data.reference_person}) – eine Portion, nicht der ganze Tag. Auswärts, Vorrat und ausgefallene Mahlzeiten zählen nicht mit.`
+            }
+          />
+        ) : (
+          <EmptyState
+            title="Noch keine Nährwerte"
+            hint="Sobald Gerichte mit Nährwerten geplant sind, stehen hier Tagessummen und der Ø je Portion."
+          />
+        )
+      )}
 
       {!editing && others.length > 0 && (
         <section>
@@ -423,4 +520,24 @@ function GridHint() {
       )}
     </div>
   );
+}
+
+type BoardView = "dishes" | "nutrition";
+const VIEW_KEY = "week.view";
+const DAY_NAME = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"];
+
+function readView(): BoardView {
+  try {
+    return localStorage.getItem(VIEW_KEY) === "nutrition" ? "nutrition" : "dishes";
+  } catch {
+    return "dishes";
+  }
+}
+
+function writeView(view: BoardView) {
+  try {
+    localStorage.setItem(VIEW_KEY, view);
+  } catch {
+    // privates Fenster o. Ä. - dann eben nicht gemerkt
+  }
 }

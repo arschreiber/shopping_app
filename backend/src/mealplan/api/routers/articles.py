@@ -5,14 +5,18 @@ from __future__ import annotations
 from fastapi import APIRouter, Query, status
 
 from ...services import articles as service
+from ...services import nutrients as nutrient_service
 from ..deps import CatalogDep, SessionDep
 from ..schemas.common import (
+    ArticleBlsIn,
     ArticleIn,
     ArticleOut,
     ArticlePatch,
     ArticleSuggestion,
+    BlsFoodOut,
     CatalogSuggestionOut,
     MergeIn,
+    MicroFieldOut,
 )
 
 router = APIRouter(prefix="/api/articles", tags=["articles"])
@@ -43,6 +47,40 @@ def catalog_suggest(
     ]
 
 
+@router.get("/micro-fields", response_model=list[MicroFieldOut])
+def micro_fields() -> list[MicroFieldOut]:
+    """Die Etikett-Felder in Anzeigereihenfolge, Folsäure als eigenes Feld bei Folat."""
+    from ...domain.micronutrients import FOLIC_ACID, MICRONUTRIENTS
+
+    out: list[MicroFieldOut] = []
+    for nutrient in MICRONUTRIENTS:
+        out.append(
+            MicroFieldOut(
+                code=nutrient.code,
+                label=nutrient.label,
+                unit=nutrient.unit,
+                group=nutrient.group,
+                kind=nutrient.kind,
+            )
+        )
+        if nutrient.code == "FOL":
+            out.append(
+                MicroFieldOut(
+                    code=FOLIC_ACID, label="Folsäure", unit="µg", group=nutrient.group
+                )
+            )
+    return out
+
+
+@router.get("/bls-search", response_model=list[BlsFoodOut])
+def bls_search(session: SessionDep, q: str = Query(min_length=2)) -> list[BlsFoodOut]:
+    """Im Bundeslebensmittelschlüssel suchen - alle Wörter müssen vorkommen."""
+    return [
+        BlsFoodOut(code=hit.code, name=hit.name, score=hit.score)
+        for hit in nutrient_service.search(session, q)
+    ]
+
+
 @router.post("", response_model=ArticleOut, status_code=status.HTTP_201_CREATED)
 def create_article(session: SessionDep, payload: ArticleIn) -> ArticleOut:
     article = service.create_article(
@@ -64,6 +102,7 @@ def create_article(session: SessionDep, payload: ArticleIn) -> ArticleOut:
         carbs_g=payload.carbs_g,
         fat_g=payload.fat_g,
         protein_g=payload.protein_g,
+        label_micros=payload.label_micros,
     )
     session.flush()
     session.refresh(article)
@@ -80,6 +119,33 @@ def update_article(session: SessionDep, article_id: int, payload: ArticlePatch) 
     article = service.update_article(
         session, article_id, **payload.model_dump(exclude_unset=True)
     )
+    session.flush()
+    session.refresh(article)
+    return ArticleOut.of(article)
+
+
+@router.get("/{article_id}/bls-suggestions", response_model=list[BlsFoodOut])
+def bls_suggestions(session: SessionDep, article_id: int) -> list[BlsFoodOut]:
+    """Vorschläge für die BLS-Referenz - übernommen wird nur, was jemand wählt."""
+    article = service.get_article(session, article_id)
+    return [
+        BlsFoodOut(code=hit.code, name=hit.name, score=hit.score)
+        for hit in nutrient_service.suggestions_for(session, article)
+    ]
+
+
+@router.put("/{article_id}/bls", response_model=ArticleOut)
+def set_bls(session: SessionDep, article_id: int, payload: ArticleBlsIn) -> ArticleOut:
+    """Referenz setzen, bewusst keine, oder lösen - Fehler kommen als 422."""
+    article = service.get_article(session, article_id)
+    if payload.code:
+        nutrient_service.link(
+            session, article, payload.code, grams_per_unit=payload.grams_per_unit
+        )
+    elif payload.skip:
+        nutrient_service.skip(session, article)
+    else:
+        nutrient_service.unlink(session, article)
     session.flush()
     session.refresh(article)
     return ArticleOut.of(article)

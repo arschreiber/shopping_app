@@ -5,6 +5,8 @@ import { IconBook, IconBox, IconCart, IconGear, IconTag } from "./components/Ico
 import { ArticlesRoute } from "./routes/ArticlesRoute";
 import { DishEditRoute } from "./routes/DishEditRoute";
 import { DishesRoute } from "./routes/DishesRoute";
+import { DishNewRoute } from "./routes/DishNewRoute";
+import { NutrientsRoute } from "./routes/NutrientsRoute";
 import { OffersRoute } from "./routes/OffersRoute";
 import { SettingsRoute } from "./routes/SettingsRoute";
 import { ShoppingRoute } from "./routes/ShoppingRoute";
@@ -24,8 +26,10 @@ export function App() {
           <Route path="/week/:iso/list" element={<ShoppingRoute />} />
           <Route path="/list" element={<Navigate to={`/week/${iso}/list`} replace />} />
           <Route path="/dishes" element={<DishesRoute />} />
+          <Route path="/dishes/new" element={<DishNewRoute />} />
           <Route path="/dishes/:id" element={<DishEditRoute />} />
           <Route path="/articles" element={<ArticlesRoute />} />
+          <Route path="/nutrients" element={<NutrientsRoute />} />
           <Route path="/offers" element={<OffersRoute />} />
           <Route path="/settings" element={<SettingsRoute />} />
           <Route path="*" element={<Navigate to={`/week/${iso}`} replace />} />
@@ -79,6 +83,9 @@ function TopBar() {
           <NavLink to="/articles" className={linkClass}>
             Artikel
           </NavLink>
+          <NavLink to="/nutrients" className={linkClass}>
+            Nährwerte
+          </NavLink>
           <NavLink to="/offers" className={linkClass}>
             <IconTag className="h-3.5 w-3.5" />
             Angebote
@@ -109,6 +116,7 @@ function TopBar() {
  */
 function BottomNav() {
   const iso = useCurrentIso();
+  const onNutrients = useLocation().pathname.startsWith("/nutrients");
   const itemClass = ({ isActive }: { isActive: boolean }) =>
     [
       "flex flex-1 flex-col items-center gap-0.5 py-2 text-2xs transition-colors duration-fast",
@@ -132,7 +140,10 @@ function BottomNav() {
         <IconBook />
         Gerichte
       </NavLink>
-      <NavLink to="/articles" className={itemClass}>
+      <NavLink
+        to="/articles"
+        className={({ isActive }) => itemClass({ isActive: isActive || onNutrients })}
+      >
         <IconBox />
         Artikel
       </NavLink>

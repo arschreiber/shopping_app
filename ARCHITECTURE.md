@@ -31,7 +31,8 @@ Integrations-Adaptern und einer SPA, die den Kern nur rendert (keine Logik-Dupli
 
 - **§5 Phase 0 „Schnellerfassung per LLM“ entfällt.** Ersatz: Paste-Textarea + deterministischer
   Parser + Combobox mit Inline-Artikelanlage (§7). Nebenwirkung: die automatischen
-  Kategorie-Vorschläge fallen weg → Kategorien als Chip-Picker, häufigste Chips vorne.
+  Kategorie-Vorschläge fallen weg → Beilage und Protein werden deterministisch aus den Zutaten
+  erkannt (`domain/dish_roles.py`), gelernt aus den gespeicherten Gerichten.
 - **§7 „LLM als Schiedsrichter“ beim Angebots-Matching wird verschoben.** MVP: Alias-Liste +
   RapidFuzz + „Unzugeordnet“-Ansicht. Der Port existiert, die Implementierung nicht.
 - **§8 Nr. 11 umgedreht:** statt „gekocht“ zu bestätigen, gilt ein geplantes Gericht ab seinem
@@ -366,7 +367,10 @@ entscheidet):
   vorbefüllt, Bring!-Katalogvorschlag daneben. Ein Klick, kein Modal, kein Seitenwechsel.
 - Zeilenmodus für Nachpflege: `Tab` zwischen Menge/Einheit/Artikel, Combobox mit Fuzzy-Suche,
   `Enter` legt bei Nichttreffer den Artikel inline an.
-- Kategorien als Chip-Picker, häufigste Chips vorne (ersetzt die weggefallenen LLM-Vorschläge).
+- Beilage und Protein aus den Zutaten (`domain/dish_roles.py`): die Rolle einer Zutat wird aus
+  den gespeicherten Gerichten gelernt, pro Gericht gewinnt die Zutat mit den meisten Gramm KH
+  bzw. Protein. Unbekanntes wird vorgeschlagen, nicht gesetzt; von Hand überstimmbar.
+  Ähnlich benannte Gerichte lassen sich beim Anlegen als Vorlage übernehmen.
 
 **Wochenboard**: 7×2-Grid. Laptop = `dnd-kit` (Gericht aus Kandidatenliste ziehen, Slots tauschen);
 Handy = Slot antippen → Bottom-Sheet mit sortierter Kandidatenliste, Score-Beiträge als Zeilen,

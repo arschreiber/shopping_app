@@ -19,7 +19,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from .api.routers import articles, dishes, shopping, stores, system, weeks
+from .api.routers import articles, dishes, nutrients, shopping, stores, system, weeks
 from .config import Settings, get_settings
 from .db.session import get_engine, set_engine
 from .integrations.bring.bring_sync import BringSync
@@ -128,6 +128,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     for router in (
         articles.router,
         dishes.router,
+        nutrients.router,
         weeks.router,
         shopping.router,
         stores.router,

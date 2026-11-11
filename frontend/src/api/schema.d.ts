@@ -62,6 +62,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/articles/micro-fields": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Micro Fields
+         * @description Die Etikett-Felder in Anzeigereihenfolge, Folsäure als eigenes Feld bei Folat.
+         */
+        get: operations["micro_fields_api_articles_micro_fields_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/articles/bls-search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Bls Search
+         * @description Im Bundeslebensmittelschlüssel suchen - alle Wörter müssen vorkommen.
+         */
+        get: operations["bls_search_api_articles_bls_search_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/articles/{article_id}": {
         parameters: {
             query?: never;
@@ -79,6 +119,46 @@ export interface paths {
         head?: never;
         /** Update Article */
         patch: operations["update_article_api_articles__article_id__patch"];
+        trace?: never;
+    };
+    "/api/articles/{article_id}/bls-suggestions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Bls Suggestions
+         * @description Vorschläge für die BLS-Referenz - übernommen wird nur, was jemand wählt.
+         */
+        get: operations["bls_suggestions_api_articles__article_id__bls_suggestions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/articles/{article_id}/bls": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Bls
+         * @description Referenz setzen, bewusst keine, oder lösen - Fehler kommen als 422.
+         */
+        put: operations["set_bls_api_articles__article_id__bls_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/articles/{article_id}/merge": {
@@ -187,6 +267,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/dishes/roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Detect Roles
+         * @description Beilage und Protein aus den Zutaten (domain/dish_roles.py) - fürs Formular.
+         */
+        post: operations["detect_roles_api_dishes_roles_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/parse/ingredients": {
         parameters: {
             query?: never;
@@ -221,6 +321,46 @@ export interface paths {
          * @description Ein-Klick-Bestaetigung am Folgetag (general_plan.md §8 Nr. 11).
          */
         post: operations["confirm_cooked_api_cook_log_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/nutrients": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Nutrients
+         * @description Makros, dann Mikros - in der Reihenfolge der Nährwert-Tabellen.
+         */
+        get: operations["list_nutrients_api_nutrients_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/nutrients/{code}/articles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Ranking
+         * @description Alle Artikel nach Menge sortiert: je 100 g/ml (Standard) oder je 100 kcal.
+         */
+        get: operations["ranking_api_nutrients__code__articles_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -402,6 +542,26 @@ export interface paths {
         post?: never;
         /** Clear Week */
         delete: operations["clear_week_api_weeks__iso__assignments_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/weeks/{iso}/nutrition": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Week Nutrition
+         * @description Je Tag für eine Person (Mittag + Abend) und Ø je Portion (domain/week_nutrition.py).
+         */
+        get: operations["week_nutrition_api_weeks__iso__nutrition_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -754,6 +914,21 @@ export interface components {
             /** @default MANUAL */
             source: components["schemas"]["ItemSource"];
         };
+        /**
+         * ArticleBlsIn
+         * @description Referenz setzen (`code`), bewusst keine (`skip`) oder lösen (beides leer).
+         */
+        ArticleBlsIn: {
+            /** Code */
+            code?: string | null;
+            /** Grams Per Unit */
+            grams_per_unit?: number | string | null;
+            /**
+             * Skip
+             * @default false
+             */
+            skip: boolean;
+        };
         /** ArticleIn */
         ArticleIn: {
             /** Canonical Name */
@@ -796,6 +971,27 @@ export interface components {
             fat_g?: number | string | null;
             /** Protein G */
             protein_g?: number | string | null;
+            /** Label Micros */
+            label_micros?: {
+                [key: string]: number | string;
+            } | null;
+        };
+        /**
+         * ArticleMicroOut
+         * @description Ein Wert im Nährstoffprofil des Artikels, je Bezugsgröße (`nutrition_basis`).
+         */
+        ArticleMicroOut: {
+            /** Code */
+            code: string;
+            /** Amount */
+            amount: string;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "label" | "bls";
+            /** Share */
+            share?: string | null;
         };
         /** ArticleOut */
         ArticleOut: {
@@ -841,6 +1037,23 @@ export interface components {
              * @default
              */
             nutrition_basis: string;
+            /** Bls Code */
+            bls_code?: string | null;
+            /** Bls Name */
+            bls_name?: string | null;
+            /** Bls Grams Per Unit */
+            bls_grams_per_unit?: string | null;
+            /**
+             * Bls Skip
+             * @default false
+             */
+            bls_skip: boolean;
+            /** Label Micros */
+            label_micros?: {
+                [key: string]: string;
+            } | null;
+            /** Micros */
+            micros?: components["schemas"]["ArticleMicroOut"][];
         };
         /** ArticlePatch */
         ArticlePatch: {
@@ -877,6 +1090,10 @@ export interface components {
             fat_g?: number | string | null;
             /** Protein G */
             protein_g?: number | string | null;
+            /** Label Micros */
+            label_micros?: {
+                [key: string]: number | string;
+            } | null;
         };
         /** ArticleSuggestion */
         ArticleSuggestion: {
@@ -941,6 +1158,15 @@ export interface components {
              * @default false
              */
             cancelled: boolean;
+        };
+        /** BlsFoodOut */
+        BlsFoodOut: {
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** Score */
+            score?: number | null;
         };
         /** CancelIn */
         CancelIn: {
@@ -1023,6 +1249,23 @@ export interface components {
             /** Note */
             note?: string | null;
         };
+        /** DayNutritionOut */
+        DayNutritionOut: {
+            nutrients: components["schemas"]["NutrientsOut"];
+            /** Micros */
+            micros: components["schemas"]["MicroValueOut"][];
+            /** Meal Count */
+            meal_count: number;
+            /** Complete */
+            complete: boolean;
+            /** Day */
+            day: number;
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+        };
         /** DishIn */
         DishIn: {
             /** Name */
@@ -1065,6 +1308,32 @@ export interface components {
             categories?: components["schemas"]["CategoryIn"][];
         };
         /**
+         * DishMicrosOut
+         * @description Mikronährstoffe je Portion aus dem BLS - mit denselben Lücken-Listen.
+         */
+        DishMicrosOut: {
+            /** Values */
+            values: components["schemas"]["MicroValueOut"][];
+            /** Is Complete */
+            is_complete: boolean;
+            /** Has Any */
+            has_any: boolean;
+            /** Counted */
+            counted: number;
+            /** Ingredient Count */
+            ingredient_count: number;
+            /** Missing Article Ids */
+            missing_article_ids: number[];
+            /** Skipped Article Ids */
+            skipped_article_ids: number[];
+            /** Open Quantity Article Ids */
+            open_quantity_article_ids: number[];
+            /** Reference Person */
+            reference_person: string;
+            /** Attribution */
+            attribution: string;
+        };
+        /**
          * DishNutritionOut
          * @description Nährwerte je Portion plus die Lücken, die dahinter stecken.
          */
@@ -1083,6 +1352,9 @@ export interface components {
             missing_article_ids: number[];
             /** Open Quantity Article Ids */
             open_quantity_article_ids: number[];
+            micros?: components["schemas"]["DishMicrosOut"] | null;
+            /** Breakdown */
+            breakdown?: components["schemas"]["IngredientShareOut"][];
         };
         /** DishOut */
         DishOut: {
@@ -1150,6 +1422,16 @@ export interface components {
             ingredients?: components["schemas"]["IngredientIn"][] | null;
             /** Categories */
             categories?: components["schemas"]["CategoryIn"][] | null;
+        };
+        /** DishRolesIn */
+        DishRolesIn: {
+            /** Ingredients */
+            ingredients?: components["schemas"]["IngredientIn"][];
+        };
+        /** DishRolesOut */
+        DishRolesOut: {
+            side: components["schemas"]["RoleDetectionOut"];
+            protein: components["schemas"]["RoleDetectionOut"];
         };
         /** DishSummary */
         DishSummary: {
@@ -1251,6 +1533,20 @@ export interface components {
             note?: string | null;
         };
         /**
+         * IngredientShareOut
+         * @description Was eine Zutat je Portion beiträgt - Makros (`kcal`, `carbs_g`, `fat_g`,
+         *     `protein_g`) und Mikros (BLS-Codes), jeweils in der Anzeigeeinheit. Fehlt ein Schlüssel,
+         *     ist der Wert für diese Zutat unbekannt.
+         */
+        IngredientShareOut: {
+            /** Article Id */
+            article_id: number;
+            /** Values */
+            values: {
+                [key: string]: string;
+            };
+        };
+        /**
          * ItemSource
          * @enum {string}
          */
@@ -1265,10 +1561,93 @@ export interface components {
          * @enum {string}
          */
         Meal: "LUNCH" | "DINNER";
+        /** MealNutritionOut */
+        MealNutritionOut: {
+            /** Day */
+            day: number;
+            meal: components["schemas"]["Meal"];
+            /** Dish Id */
+            dish_id: number;
+            /** Dish Name */
+            dish_name: string;
+            per_portion: components["schemas"]["NutrientsOut"];
+            /** Complete */
+            complete: boolean;
+        };
         /** MergeIn */
         MergeIn: {
             /** Source Ids */
             source_ids: number[];
+        };
+        /**
+         * MicroFieldOut
+         * @description Ein Eingabefeld für Etikett-Mikros - die Liste kommt vom Server, nicht doppelt.
+         */
+        MicroFieldOut: {
+            /** Code */
+            code: string;
+            /** Label */
+            label: string;
+            /** Unit */
+            unit: string;
+            /** Group */
+            group: string;
+            /** Kind */
+            kind?: ("target" | "limit") | null;
+        };
+        /** MicroValueOut */
+        MicroValueOut: {
+            /** Code */
+            code: string;
+            /** Label */
+            label: string;
+            /** Unit */
+            unit: string;
+            /** Group */
+            group: string;
+            /** Amount */
+            amount: string;
+            /** Share */
+            share?: string | null;
+            /** Kind */
+            kind?: ("target" | "limit") | null;
+            /**
+             * Partial
+             * @default false
+             */
+            partial: boolean;
+        };
+        /** NutrientDefOut */
+        NutrientDefOut: {
+            /** Code */
+            code: string;
+            /** Label */
+            label: string;
+            /** Unit */
+            unit: string;
+            /** Group */
+            group: string;
+            /** Reference */
+            reference?: string | null;
+            /** Kind */
+            kind?: ("target" | "limit") | null;
+        };
+        /** NutrientRankingOut */
+        NutrientRankingOut: {
+            nutrient: components["schemas"]["NutrientDefOut"];
+            /**
+             * Basis
+             * @enum {string}
+             */
+            basis: "mass" | "kcal";
+            /** Entries */
+            entries: components["schemas"]["RankedArticleOut"][];
+            /** Missing */
+            missing: components["schemas"]["UnrankedArticleOut"][];
+            /** Reference Person */
+            reference_person: string;
+            /** Attribution */
+            attribution: string;
         };
         /** NutrientsOut */
         NutrientsOut: {
@@ -1287,6 +1666,19 @@ export interface components {
             portions: number;
             /** Ingredients */
             ingredients?: components["schemas"]["IngredientIn"][];
+        };
+        /**
+         * NutritionSumOut
+         * @description Summe (ein Tag, eine Person) oder Ø (je Portion) mehrerer Mahlzeiten.
+         */
+        NutritionSumOut: {
+            nutrients: components["schemas"]["NutrientsOut"];
+            /** Micros */
+            micros: components["schemas"]["MicroValueOut"][];
+            /** Meal Count */
+            meal_count: number;
+            /** Complete */
+            complete: boolean;
         };
         /** OfferMatchIn */
         OfferMatchIn: {
@@ -1457,6 +1849,52 @@ export interface components {
             text_fallback?: string | null;
             /** Run Id */
             run_id: number;
+        };
+        /** RankedArticleOut */
+        RankedArticleOut: {
+            /** Article Id */
+            article_id: number;
+            /** Name */
+            name: string;
+            /** Amount */
+            amount: string;
+            /** Per */
+            per: string;
+            /** Share */
+            share?: string | null;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "label" | "bls";
+        };
+        /** RoleCandidateOut */
+        RoleCandidateOut: {
+            /** Article Id */
+            article_id: number;
+            /** Article Name */
+            article_name: string;
+            /** Grams */
+            grams: string;
+            /** Category */
+            category: string;
+            /** Known */
+            known: boolean;
+            /**
+             * Is Side
+             * @default false
+             */
+            is_side: boolean;
+        };
+        /** RoleDetectionOut */
+        RoleDetectionOut: {
+            axis: components["schemas"]["CategoryAxis"];
+            /** Category */
+            category: string | null;
+            source?: components["schemas"]["RoleCandidateOut"] | null;
+            suggestion?: components["schemas"]["RoleCandidateOut"] | null;
+            /** Candidates */
+            candidates?: components["schemas"]["RoleCandidateOut"][];
         };
         /** ScoreOut */
         ScoreOut: {
@@ -1737,6 +2175,15 @@ export interface components {
          * @enum {string}
          */
         Unit: "STUECK" | "G" | "KG" | "ML" | "L";
+        /** UnrankedArticleOut */
+        UnrankedArticleOut: {
+            /** Article Id */
+            article_id: number;
+            /** Name */
+            name: string;
+            /** Reason */
+            reason: string;
+        };
         /** ValidationError */
         ValidationError: {
             /** Location */
@@ -1765,6 +2212,22 @@ export interface components {
             /** Day */
             day?: number | null;
             meal?: components["schemas"]["Meal"] | null;
+        };
+        /** WeekNutritionOut */
+        WeekNutritionOut: {
+            /** Iso */
+            iso: string;
+            /** Meals Per Day */
+            meals_per_day: number;
+            /** Meals */
+            meals: components["schemas"]["MealNutritionOut"][];
+            /** Days */
+            days: components["schemas"]["DayNutritionOut"][];
+            average: components["schemas"]["NutritionSumOut"];
+            /** Reference Person */
+            reference_person: string;
+            /** Attribution */
+            attribution: string;
         };
         /** WeekOut */
         WeekOut: {
@@ -1931,6 +2394,57 @@ export interface operations {
             };
         };
     };
+    micro_fields_api_articles_micro_fields_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MicroFieldOut"][];
+                };
+            };
+        };
+    };
+    bls_search_api_articles_bls_search_get: {
+        parameters: {
+            query: {
+                q: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BlsFoodOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_article_api_articles__article_id__get: {
         parameters: {
             query?: never;
@@ -2003,6 +2517,72 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["ArticlePatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArticleOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bls_suggestions_api_articles__article_id__bls_suggestions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                article_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BlsFoodOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_bls_api_articles__article_id__bls_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                article_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ArticleBlsIn"];
             };
         };
         responses: {
@@ -2276,6 +2856,39 @@ export interface operations {
             };
         };
     };
+    detect_roles_api_dishes_roles_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DishRolesIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DishRolesOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     parse_ingredients_api_parse_ingredients_post: {
         parameters: {
             query?: never;
@@ -2329,6 +2942,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DishOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_nutrients_api_nutrients_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NutrientDefOut"][];
+                };
+            };
+        };
+    };
+    ranking_api_nutrients__code__articles_get: {
+        parameters: {
+            query?: {
+                basis?: "mass" | "kcal";
+            };
+            header?: never;
+            path: {
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NutrientRankingOut"];
                 };
             };
             /** @description Validation Error */
@@ -2709,6 +3375,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WeekOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    week_nutrition_api_weeks__iso__nutrition_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                iso: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WeekNutritionOut"];
                 };
             };
             /** @description Validation Error */

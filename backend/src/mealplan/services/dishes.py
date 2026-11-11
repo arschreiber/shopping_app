@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from ..db import models as m
 from ..domain.enums import CategoryAxis, Effort, SuitableFor, Unit
+from ..domain.micronutrients import DishMicros
 from ..domain.model import IngredientSpec
 from ..domain.nutrition import DishNutrition, dish_nutrition
 from ..domain.units import DIMENSION_OF
@@ -254,6 +255,37 @@ def nutrition_for(session: Session, dish: m.Dish) -> DishNutrition:
         ],
         article_nutrition_index(session),
         portions=dish.portions,
+    )
+
+
+def micros_for(session: Session, dish: m.Dish) -> DishMicros:
+    """Mikronährstoffe eines gespeicherten Gerichts, je Portion."""
+    from .nutrients import dish_micros
+
+    return dish_micros(
+        session,
+        [
+            IngredientSpec(
+                article_id=row.article_id, quantity=row.quantity, unit=Unit(row.unit)
+            )
+            for row in dish.ingredients
+        ],
+        portions=dish.portions,
+    )
+
+
+def micros_preview(
+    session: Session, rows: list[IngredientInput], *, portions: int
+) -> DishMicros:
+    from .nutrients import dish_micros
+
+    return dish_micros(
+        session,
+        [
+            IngredientSpec(article_id=row.article_id, quantity=row.quantity, unit=row.unit)
+            for row in rows
+        ],
+        portions=portions,
     )
 
 
